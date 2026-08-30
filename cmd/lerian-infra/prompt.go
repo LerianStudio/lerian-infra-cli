@@ -108,7 +108,15 @@ func (p *prompter) confirm(errOut io.Writer, question string) error {
 	//
 	// p.in has its own buffer, so it is rebuilt after the flush: bytes already
 	// pulled out of the descriptor are beyond the reach of a terminal ioctl.
-	drainStdin()
+	// A drain that cannot run is refused, not ignored. This is the confirmation for
+	// an apply or a destroy, and the queue is exactly where a stray Enter typed
+	// during a long-running stage is waiting. --auto-approve remains available: an
+	// explicit decision rather than an accident of typing.
+	if err := drainStdin(); err != nil {
+		return fmt.Errorf("cannot make sure the confirmation is answered deliberately: %w\n"+
+			"Anything typed while the previous stage ran may still be queued, and would\n"+
+			"answer this prompt. Re-run with --auto-approve if you mean to skip it.", err)
+	}
 	p.in = bufio.NewReader(os.Stdin)
 
 	fmt.Fprintf(p.out, "\n  %s [type yes to continue]: ", question)

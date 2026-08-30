@@ -103,6 +103,7 @@ func placeholderLines(path string) ([]string, error) {
 	defer func() { _ = file.Close() }()
 
 	var found []string
+	var comments commentScanner
 	scanner := bufio.NewScanner(file)
 	for number := 1; scanner.Scan(); number++ {
 		line := scanner.Text()
@@ -110,7 +111,7 @@ func placeholderLines(path string) ([]string, error) {
 		// Matching the raw line reported a placeholder inside a note — "# was
 		// <PUT-YOUR-VPC-ID>" — and CheckReadiness then refused to plan a file that
 		// was complete.
-		code := stripComment(line)
+		code := comments.code(line)
 		if strings.TrimSpace(code) == "" {
 			continue
 		}
@@ -124,25 +125,55 @@ func placeholderLines(path string) ([]string, error) {
 	return found, nil
 }
 
-// stripComment returns the code half of one HCL line.
+// commentScanner strips HCL comments from a file one line at a time.
 //
-// A # or // inside a quoted string is not a comment, so the scan tracks quotes
-// rather than taking the first marker it sees: a bucket named
-// "lerian-tfstate-dev#1" must not be truncated.
-func stripComment(line string) string {
+// It is stateful because HCL has block comments: /* ... */ can open on one line and
+// close on another, and a placeholder or a region assignment inside one is prose,
+// not configuration. A line-at-a-time function cannot know it is inside a block.
+//
+// Quotes are tracked too, because a # or a // inside a string is not a comment: a
+// bucket named "lerian-tfstate-dev#1" must survive intact.
+type commentScanner struct {
+	inBlock bool
+}
+
+// code returns the part of line that is configuration, with every comment removed.
+func (c *commentScanner) code(line string) string {
+	var out []byte
 	inQuotes := false
 	for i := 0; i < len(line); i++ {
+		if c.inBlock {
+			if line[i] == '*' && i+1 < len(line) && line[i+1] == '/' {
+				c.inBlock = false
+				i++
+			}
+			continue
+		}
 		switch {
-		case line[i] == '\\' && inQuotes:
+		case inQuotes && line[i] == '\\' && i+1 < len(line):
+			out = append(out, line[i], line[i+1])
 			i++
 		case line[i] == '"':
 			inQuotes = !inQuotes
+			out = append(out, line[i])
 		case inQuotes:
+			out = append(out, line[i])
 		case line[i] == '#':
-			return line[:i]
+			return string(out)
 		case line[i] == '/' && i+1 < len(line) && line[i+1] == '/':
-			return line[:i]
+			return string(out)
+		case line[i] == '/' && i+1 < len(line) && line[i+1] == '*':
+			c.inBlock = true
+			i++
+		default:
+			out = append(out, line[i])
 		}
 	}
-	return line
+	return string(out)
+}
+
+// stripComment removes the comments from a single self-contained line.
+func stripComment(line string) string {
+	var scanner commentScanner
+	return scanner.code(line)
 }

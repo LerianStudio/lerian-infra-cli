@@ -762,3 +762,21 @@ instance_type = "db.r6g.large" # ~USD 300/month, us-east-1 on-demand
 		t.Errorf("the whole-line comment was rewritten:\n%s", text)
 	}
 }
+
+// A region assignment inside a block comment is prose. Rewriting it edited the note
+// the templates carry to explain a past choice.
+func TestRetargetRegionIgnoresBlockComments(t *testing.T) {
+	in := []byte(`region = "us-east-1"
+/* this stack used to run in us-east-1;
+   the cost figures below are from us-east-1 */
+instance_type = "db.r6g.large"
+`)
+	out, _ := retargetRegion(in, "us-east-2")
+	text := string(out)
+	if !strings.Contains(text, `region = "us-east-2"`) {
+		t.Errorf("the assignment was not rewritten:\n%s", text)
+	}
+	if strings.Count(text, "us-east-1") != 2 {
+		t.Errorf("both mentions inside the block comment must survive:\n%s", text)
+	}
+}

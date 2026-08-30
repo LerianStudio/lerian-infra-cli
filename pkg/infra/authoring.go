@@ -674,8 +674,12 @@ var modeAssignment = regexp.MustCompile(`^(\s*mode\s*=\s*")[^"]*(")`)
 // file describing a choice it no longer makes.
 func setMode(content []byte, mode string) []byte {
 	lines := splitLines(content)
+	var comments commentScanner
 	for i, line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			// Consumed anyway, so a block comment opened on a commented line is
+			// still tracked.
+			comments.code(line)
 			continue
 		}
 		if modeAssignment.MatchString(line) {
@@ -711,16 +715,24 @@ func retargetRegion(content []byte, region string) ([]byte, string) {
 		return content, ""
 	}
 
+	var comments commentScanner
 	for i, line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			// Consumed anyway, so a block comment opened on a commented line is
+			// still tracked.
+			comments.code(line)
 			continue
 		}
 		// Only the code half is rewritten. Replacing across the whole line also
 		// edited end-of-line notes such as
 		//   instance_type = "db.r6g.large" # ~USD 300/month, us-east-1 on-demand
 		// which is exactly the prose this function promises to leave alone.
-		code := stripComment(line)
-		lines[i] = strings.ReplaceAll(code, from, region) + line[len(code):]
+		code := comments.code(line)
+		// Only a trailing comment can be re-appended by length: anything else means
+		// the line is inside a block comment, and then there is nothing to rewrite.
+		if strings.HasPrefix(line, code) {
+			lines[i] = strings.ReplaceAll(code, from, region) + line[len(code):]
+		}
 	}
 	return joinLines(lines), from
 }

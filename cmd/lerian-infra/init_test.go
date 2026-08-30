@@ -580,3 +580,32 @@ func TestSupportsModeReadsTheExample(t *testing.T) {
 		}
 	}
 }
+
+// The templates append an IPv4 /32 to whatever this value is, so anything that is
+// not a bare IPv4 address is written into the tfvars as nonsense and fails at plan
+// time, far from the flag that caused it.
+func TestAPICIDRTakesABareIPv4Address(t *testing.T) {
+	for _, test := range []struct {
+		value   string
+		wantErr string
+	}{
+		{"203.0.113.7", ""},
+		{"203.0.113.0/24", "not a CIDR block"},
+		{"203.0.113.7/32", "not a CIDR block"},
+		{"host.example", "IPv4 address"},
+		{"2001:db8::1", "IPv4 address"},
+		{"", ""},
+	} {
+		got, err := validateBareAddress(test.value)
+		switch {
+		case test.wantErr == "" && err != nil:
+			t.Errorf("%q: unexpected error %v", test.value, err)
+		case test.wantErr == "" && got != test.value:
+			t.Errorf("%q: returned %q", test.value, got)
+		case test.wantErr != "" && err == nil:
+			t.Errorf("%q: expected a refusal", test.value)
+		case test.wantErr != "" && !strings.Contains(err.Error(), test.wantErr):
+			t.Errorf("%q: error should mention %q:\n%v", test.value, test.wantErr, err)
+		}
+	}
+}

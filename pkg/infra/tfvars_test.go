@@ -123,3 +123,26 @@ func TestPlaceholdersIgnoreCommentedText(t *testing.T) {
 		}
 	}
 }
+
+// HCL block comments cross lines, so a line-at-a-time check cannot know it is
+// inside one. A placeholder in a /* ... */ block is prose, and reporting it made
+// CheckReadiness refuse a file that was complete.
+func TestPlaceholdersIgnoreBlockComments(t *testing.T) {
+	lines := []string{
+		`/* the old value was <PUT-YOUR-VPC-ID>`,
+		`   and the region was <PUT-YOUR-REGION> */`,
+		`vpc_id = "<PUT-YOUR-VPC-ID>"`,
+		`/* inline */ subnet = "<PUT-YOUR-SUBNET>"`,
+		`name = "block /* not a comment */ inside a string"`,
+	}
+	want := []bool{false, false, true, true, false}
+
+	var scanner commentScanner
+	for i, line := range lines {
+		code := scanner.code(line)
+		got := placeholderPattern.MatchString(code)
+		if got != want[i] {
+			t.Errorf("line %d %q -> found=%v, want %v (code %q)", i+1, line, got, want[i], code)
+		}
+	}
+}

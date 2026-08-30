@@ -19,16 +19,25 @@ on:
 # pull-request code, and a workflow-level write grant hands that code a
 # write-capable GITHUB_TOKEN on a same-repository PR. Only release needs writes, and
 # it declares them itself.
+# One queue for every release branch. main and develop can both reach the release
+# job, and semantic-release plus the backmerge plugin push to shared refs — a
+# concurrent run rejects the other's push. Queued, never cancelled: cancelling a
+# release that has already tagged leaves the tag without its artifacts.
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
 jobs:
   go:
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    # commitlint lists the pull request's commits through the API, so it needs to
-    # read the PR. Nothing here writes.
     permissions:
+      # The checkout needs the code.
       contents: read
+      # commitlint lists the pull request's commits through the GitHub API rather
+      # than from the local history, so it needs to read the PR itself.
       pull-requests: read
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -130,6 +139,12 @@ jobs:
       with:
         app-id: ${{ secrets.LERIAN_STUDIO_MIDAZ_PUSH_BOT_APP_ID }}
         private-key: ${{ secrets.LERIAN_STUDIO_MIDAZ_PUSH_BOT_PRIVATE_KEY }}
+        # Without these the token carries everything the App was granted. These
+        # three are what semantic-release uses: the tag and release, the comment on
+        # closed issues, and the comment on the merged PR.
+        permission-contents: write
+        permission-issues: write
+        permission-pull-requests: write
 
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:

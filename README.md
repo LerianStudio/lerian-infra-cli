@@ -88,15 +88,30 @@ which is what lets the same run drive a terminal checklist or a polled web UI wi
 parsing text.
 
 ```go
-layout, _  := infra.NewLayout(repoRoot)
-catalog, _ := infra.Discover(layout)                    // products/*/*/main.tf
-stages, _  := infra.Resolve(layout, catalog, "midaz")    // dependency-ordered
-runner, _  := infra.NewRunner(infra.RunnerOptions{
+layout, err := infra.NewLayout(repoRoot)
+if err != nil {
+    return err
+}
+catalog, err := infra.Discover(layout)                    // products/*/*/main.tf
+if err != nil {
+    return err
+}
+stages, err := infra.Resolve(layout, catalog, "midaz")    // dependency-ordered
+if err != nil {
+    return err
+}
+runner, err := infra.NewRunner(infra.RunnerOptions{
     Layout: layout, Env: "dev", Backend: backend, Terraform: tf,
-    Jobs: 4, Progress: myProgress, RunDir: dir,          // dir must be 0700
+    Jobs: 4, Progress: myProgress, RunDir: dir,           // dir must be 0700
 })
+if err != nil {
+    return err
+}
 results, err := runner.Execute(ctx, stages, infra.ActionApply, myConfirm)
-doc, err     := runner.HelmValues(ctx, infra.Units(stages))
+if err != nil {
+    return err
+}
+doc, err := runner.HelmValues(ctx, infra.Units(stages))
 ```
 
 The account guard runs before `NewRunner` (`LoadEnvConfig`, `LoadBackend`,

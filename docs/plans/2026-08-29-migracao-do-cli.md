@@ -31,7 +31,7 @@ Actions (runners blacksmith), `gh`.
 
 | Phase | Milestone | Epics | Status |
 |-------|-----------|-------|--------|
-| 1 | O código está no repo novo com histórico, compila, testa e gera binários localmente; o README explica o que o repo é | 1.1, 1.2 | Detailed |
+| 1 | O código está no repo novo com histórico, compila, testa e gera binários localmente; o README explica o que o repo é | 1.1, 1.2 | Complete |
 | 2 | O pin de versão é declarado, não implícito, e um teste de CI prova a compatibilidade contra os templates reais | 2.1, 2.2 | Epic-level |
 | 3 | O repo de templates não tem mais Go, seu CI passa, e seu README aponta para o CLI | 3.1 | Epic-level |
 | 4 | `lerian-terraform-foundation v1.6.0` e `lerian-infra-cli v1.0.0` publicados; o wizard consome a lib sem `replace` | 4.1, 4.2, 4.3 | Epic-level |
@@ -70,11 +70,11 @@ arquivo Go
 **Dependencies:** none
 **Done when:** os 170 testes passam no repo novo; `git log --oneline | wc -l` > 1;
 nenhum import cita `lerian-terraform-foundation`
-**Status:** Pending
+**Status:** Done
 
 #### Task 1.1.1: Extrair o histórico de cmd/, pkg/ e dos arquivos de release
 
-- [ ] Done
+- [x] Done
 
 **Context:** O repo de origem está em
 `/Users/ferr3ira/Documents/empresas/lerian-studio/projetos/midaz/infrastructure/IAC/TF/lerian-terraform-foundation`,
@@ -122,7 +122,7 @@ retorna mais de 1; `ls cmd/lerian-infra pkg/infra go.mod .goreleaser.yml
 
 #### Task 1.1.2: Renomear o módulo Go
 
-- [ ] Done
+- [x] Done
 
 **Context:** O `go.mod` declara `module github.com/LerianStudio/lerian-terraform-foundation`.
 Oito arquivos em `cmd/lerian-infra` importam
@@ -155,7 +155,7 @@ ainda sabe de onde clonar os templates.
 
 #### Task 1.1.3: Tooling de release do repo novo
 
-- [ ] Done
+- [x] Done
 
 **Context:** Vieram do repo de origem: `.goreleaser.yml`, `.github/workflows/go-release.yml`
 e `SECURITY.md`. Faltam: `.releaserc` (a origem tem um, em JSON, com `main` + `develop`
@@ -211,11 +211,11 @@ ele depende de outro repo para os templates
 **Dependencies:** Epic 1.1
 **Done when:** o README tem instalação, a relação com os templates, o uso como
 biblioteca, e aponta para o tutorial na foundation em vez de duplicá-lo
-**Status:** Pending
+**Status:** Done
 
 #### Task 1.2.1: Escrever o README
 
-- [ ] Done
+- [x] Done
 
 **Context:** O README atual é o título e a description do GitHub (337 bytes). A
 foundation acabou de ganhar um README de 339 linhas com um tutorial AWS de quatro

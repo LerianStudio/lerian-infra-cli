@@ -61,17 +61,19 @@ Flags:
                         you are saying where the templates already are.
 
 THE TEMPLATES
-  This binary and the Terraform templates ship from ONE tag. The chart mapping
-  compiled into the binary and the helm_values expressions in the HCL are two
-  halves of one contract, so a checkout this command creates is pinned to the tag
-  matching the binary, never to a branch.
+  This binary declares which tag of lerian-terraform-foundation it drives. The chart
+  mapping compiled into the binary and the helm_values expressions in the HCL at
+  that tag are two halves of one contract, so a checkout this command creates is
+  pinned to the declared tag, never to a branch. Every run says which tag the
+  checkout is at and which one the binary expects.
 
   --clone               Clone the templates into the managed checkout, which lives
                         at ~/lerian/lerian-terraform-foundation. Not hidden, and
                         named after the repository, because it is an ordinary git
                         checkout you are meant to be able to open and use by hand.
   --no-clone            Fail instead of cloning when no checkout is found.
-  --sync                Move the managed checkout to this binary's tag, then exit.
+  --sync                Move the managed checkout to the tag this binary declares,
+                        then exit.
                         Your environments.conf and every envs/*.tfvars survive it:
                         they are gitignored, and a checkout does not touch
                         untracked or ignored files. That is why the path carries no

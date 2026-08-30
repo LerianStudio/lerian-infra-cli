@@ -392,6 +392,11 @@ func resolveLayout(flagRepo, envRepo, templatesDir string) (infra.Layout, checko
 // the version pin exists to remove. Reading the tag costs one git call, and git may
 // legitimately be absent — a checkout handed over by --repo works without it — so a
 // failure there drops the tag instead of failing the run.
+//
+// When the checkout is not at the ref this binary declares, the line says which ref
+// it expected. This is the one place every command passes through, so it is where a
+// mismatch gets noticed by someone who never runs init — and it stays a note on the
+// line, not a block, because a plan or a destroy is not the moment to lecture.
 func templatesLine(ctx context.Context, layout infra.Layout, source checkoutSource) string {
 	line := layout.Root
 	if git, err := infra.NewGitCLI(); err == nil {
@@ -401,6 +406,10 @@ func templatesLine(ctx context.Context, layout infra.Layout, source checkoutSour
 			ref = "untagged"
 		}
 		line += " @ " + ref
+		if !state.AtVersion(infra.TemplatesRef) {
+			line += fmt.Sprintf("  (%s)  — binary built for %s", source, infra.TemplatesRef)
+			return line
+		}
 	}
 	return fmt.Sprintf("%s  (%s)", line, source)
 }

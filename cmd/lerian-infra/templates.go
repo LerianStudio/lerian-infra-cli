@@ -70,25 +70,23 @@ func acquireTemplates(
 		return infra.Layout{}, err
 	}
 
-	ref := version
-	pinned := ref != devVersion
+	// The ref is declared by the build, not derived from its version: the CLI and
+	// the templates release separately, so the pairing has to be written down.
+	ref := infra.TemplatesRef
 
 	fmt.Fprintf(out, "\n%s\n\n", theme.bold("==> Templates"))
-	if pinned {
-		fmt.Fprint(out, wrapIndent(
-			"This binary is lerian-infra "+version+", and the Terraform templates it "+
-				"drives are versioned with it: the chart mapping compiled in here and the "+
-				"HCL in the templates are two halves of one contract. So the clone is "+
-				"pinned to the tag that matches, never to a branch.", "  ", 76)+"\n\n")
-	} else {
-		// Not blocked: a locally built binary is exactly what someone developing the
-		// tool has, and refusing them would be useless. Made impossible to miss
-		// instead — this is a consequence the operator is choosing to accept.
-		fmt.Fprintf(out, "  %s\n", theme.alert(
-			"WARNING: this binary reports version \"dev\", so there is no tag to match."))
-		fmt.Fprintf(out, "  %s\n\n", theme.alert(
-			"Cloning main. Template/binary parity is NOT guaranteed."))
-		ref = ""
+	fmt.Fprint(out, wrapIndent(
+		"This binary is lerian-infra "+version+" and drives lerian-terraform-foundation "+
+			"at "+ref+": the chart mapping compiled in here and the HCL at that tag are "+
+			"two halves of one contract. So the clone is pinned to that tag, never to a "+
+			"branch.", "  ", 76)+"\n\n")
+	if version == devVersion {
+		// A local build still knows which templates it wants; what nobody can vouch
+		// for is whether its source matches what that tag was tested against. Worth a
+		// note, not an alert — nothing here is a consequence the operator is accepting.
+		fmt.Fprintf(out, "  %s\n\n", theme.dim(
+			"This is a local build (version \"dev\"). The templates ref comes from its "+
+				"source, which may be ahead of or behind any release."))
 	}
 
 	fmt.Fprintf(out, "    git clone %s\n      %s\n      %s\n\n",
@@ -128,15 +126,11 @@ func acquireTemplates(
 	return infra.NewLayout(path)
 }
 
-// runSync moves the managed checkout onto this binary's tag and does nothing else.
+// runSync moves the managed checkout onto the templates ref this binary declares,
+// and does nothing else.
 func runSync(ctx context.Context, opts initOptions, out io.Writer) error {
 	theme := newStyle(out)
 
-	if version == devVersion {
-		return errors.New("--sync needs a tagged binary, and this one reports \"dev\"\n" +
-			"There is no version to sync TO. Build from a tag, or check out the ref you\n" +
-			"want by hand in the managed checkout.")
-	}
 	git, err := infra.NewGitCLI()
 	if err != nil {
 		return err
@@ -150,21 +144,23 @@ func runSync(ctx context.Context, opts initOptions, out io.Writer) error {
 			"Nothing to sync. Create it with 'lerian-infra init --env <env> --clone'.", path)
 	}
 
+	target := infra.TemplatesRef
 	before := infra.InspectCheckout(ctx, git, path, true)
 	fmt.Fprintf(out, "\n%s\n\n", theme.bold("==> Sync"))
+	fmt.Fprintf(out, "  binary    lerian-infra %s\n", version)
 	fmt.Fprintf(out, "  checkout  %s\n", path)
 	fmt.Fprintf(out, "  from      %s\n", refOrUntagged(before.Ref))
-	fmt.Fprintf(out, "  to        %s\n\n", version)
+	fmt.Fprintf(out, "  to        %s\n\n", target)
 
-	if before.AtVersion(version) {
+	if before.AtVersion(target) {
 		fmt.Fprintf(out, "  already there — nothing to do\n\n")
 		return nil
 	}
-	if err := infra.SyncTemplates(ctx, git, path, version); err != nil {
+	if err := infra.SyncTemplates(ctx, git, path, target); err != nil {
 		return err
 	}
 
-	fmt.Fprintf(out, "  ok  now at %s\n", version)
+	fmt.Fprintf(out, "  ok  now at %s\n", target)
 	// Answered before it is asked: "did I just lose my tfvars?" is the first thing an
 	// operator wonders here, and answering after the fact is worth less.
 	fmt.Fprint(out, theme.dim(wrapIndent(
@@ -175,33 +171,33 @@ func runSync(ctx context.Context, opts initOptions, out io.Writer) error {
 }
 
 // warnVersionMismatch says when the templates in use are not the ones this binary
-// was built against.
+// declares it was built against.
 //
 // It warns and never blocks. The operator may have a reason, and stopping them in the
 // middle of a destroy would be worse than the risk being reported. The message says
 // what the mismatch actually causes, because "versions differ" alone does not tell
 // anyone whether to care.
+//
+// A local build is not exempt: it declares a templates ref like any other, and a
+// developer running against the wrong tag benefits from hearing it just as much.
 func warnVersionMismatch(ctx context.Context, out io.Writer, layout infra.Layout, source checkoutSource) {
-	if version == devVersion {
-		return
-	}
 	git, err := infra.NewGitCLI()
 	if err != nil {
 		return
 	}
 	state := infra.InspectCheckout(ctx, git, layout.Root, source == sourceManaged)
-	if state.AtVersion(version) {
+	if state.AtVersion(infra.TemplatesRef) {
 		return
 	}
 
 	theme := newStyle(out)
-	fmt.Fprintf(out, "\n  %s\n", theme.bold("Templates are not at this binary's version."))
-	fmt.Fprintf(out, "    this binary   %s\n", version)
+	fmt.Fprintf(out, "\n  %s\n", theme.bold("Templates are not at the ref this binary declares."))
+	fmt.Fprintf(out, "    this binary   lerian-infra %s, built for templates %s\n", version, infra.TemplatesRef)
 	fmt.Fprintf(out, "    checkout at   %s\n\n", refOrUntagged(state.Ref))
 	fmt.Fprint(out, theme.dim(wrapIndent(
-		"The templates and this binary ship from the same tag. Running one version's "+
-			"logic against another's HCL is how the same product comes out one shape in "+
-			"shared mode and another in dedicated.", "    ", 76))+"\n")
+		"The chart mapping in this binary was written against the HCL at "+infra.TemplatesRef+
+			". Running it against another tag is how the same product comes out one shape "+
+			"in shared mode and another in dedicated.", "    ", 76))+"\n")
 
 	if source == sourceManaged {
 		fmt.Fprintf(out, "\n    lerian-infra init --env <env> --sync\n\n")

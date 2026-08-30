@@ -29,6 +29,21 @@ import (
 // helps most.
 const defaultTemplatesRepoURL = "https://github.com/LerianStudio/lerian-terraform-foundation.git"
 
+// TemplatesRef is the tag of lerian-terraform-foundation this build drives.
+//
+// The CLI and the templates live in different repositories and release on their own
+// cadence, so nothing makes their versions coincide by construction. This constant is
+// the declaration that replaces that coincidence: `init --clone` checks out exactly
+// this ref, `--sync` moves an existing checkout to it, and every run compares the
+// checkout it found against it. The chart mapping compiled into this binary
+// (chartmap.go) and the helm_values expressions in the HCL at this ref are two halves
+// of one contract, tested together in CI against a clone of this very tag.
+//
+// It is a constant in the source and not an ldflag: the templates a build is
+// compatible with are a property of the code, decided when the code is written, and
+// bumping it is a reviewed commit rather than a release-time parameter.
+const TemplatesRef = "v1.6.0"
+
 // TemplatesRepoEnv overrides where the templates are cloned from.
 //
 // It exists for the deployments that cannot reach github.com: an air-gapped client

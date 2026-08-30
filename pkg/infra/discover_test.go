@@ -426,3 +426,88 @@ func TestSkipUnconfiguredSharedDropsTheStageWhenNothingIsConfigured(t *testing.T
 		t.Errorf("and says what it dropped: %v", skipped)
 	}
 }
+
+// A shared module directory is excluded by convention, not by the accident of
+// holding no main.tf. Before this, products/_modules/rds without a main.tf was
+// skipped for the wrong reason; adding one — which a real module has — would have
+// made "_modules" a product and put it in `--target all`.
+func TestDiscoverExcludesUnderscoreDirectories(t *testing.T) {
+	root := t.TempDir()
+	layout := Layout{Root: root}
+	mk := func(parts ...string) {
+		t.Helper()
+		dir := filepath.Join(append([]string{layout.ProductsDir()}, parts...)...)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte("# root\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("midaz", "postgres")
+	mk("_modules", "rds")  // a shared module WITH a main.tf
+	mk("midaz", "_shared") // and one a level deeper
+
+	catalog, err := Discover(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := catalog.Products["_modules"]; ok {
+		t.Error("_modules must never be discovered as a product")
+	}
+	for _, service := range catalog.Products["midaz"] {
+		if service == "_shared" {
+			t.Error("_shared must never be discovered as a service")
+		}
+	}
+	if len(catalog.Products["midaz"]) != 1 {
+		t.Errorf("midaz should have exactly postgres, got %v", catalog.Products["midaz"])
+	}
+}
+
+// The refusal has to suggest a command that works. Removing "all," by string
+// replacement left it in place for "midaz,all" and suggested the very target that
+// had just been rejected.
+func TestAllRefusalSuggestsATargetWithoutAll(t *testing.T) {
+	layout := fakeRepo(t, map[string][]string{"midaz": {"postgres"}, "reporter": {"documentdb"}})
+	catalog, err := Discover(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"all,midaz", "midaz,all", "midaz,all,reporter"} {
+		_, err := Resolve(layout, catalog, target)
+		if err == nil {
+			t.Fatalf("%s: combining all must be refused", target)
+		}
+		suggestion := err.Error()[strings.Index(err.Error(), "--target "):]
+		if strings.Contains(suggestion, "all") {
+			t.Errorf("%s: the suggested command still contains all:\n%s", target, suggestion)
+		}
+	}
+}
+
+// The union used to be keyed by stage name, so a target naming both a product and
+// one of its services scheduled the same root twice. Progress.Start would then
+// receive a duplicate name and every later Update for it is ambiguous.
+func TestCompositeDoesNotScheduleAUnitTwice(t *testing.T) {
+	layout := fakeRepo(t, map[string][]string{"midaz": {"postgres", "valkey"}})
+	catalog, err := Discover(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stages, err := Resolve(layout, catalog, "midaz,midaz/postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	for _, stage := range stages {
+		for _, unit := range stage.Units {
+			seen[unit.Name]++
+		}
+	}
+	for name, count := range seen {
+		if count > 1 {
+			t.Errorf("%s scheduled %d times", name, count)
+		}
+	}
+}

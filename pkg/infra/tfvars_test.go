@@ -99,3 +99,27 @@ func TestCheckReadinessReportsEveryUnitRatherThanTheFirstProblem(t *testing.T) {
 		t.Errorf("report = %+v, want the order preserved and only the first not ready", report)
 	}
 }
+
+// HCL accepts // as well as #, and a comment can trail a value. Matching the raw
+// line reported a placeholder that lived inside a note, and CheckReadiness then
+// refused to plan a file that was complete.
+func TestPlaceholdersIgnoreCommentedText(t *testing.T) {
+	for _, test := range []struct {
+		name, line string
+		wantFound  bool
+	}{
+		{"real placeholder", `vpc_id = "<PUT-YOUR-VPC-ID>"`, true},
+		{"hash comment", `# copy the id from <PUT-YOUR-VPC-ID>`, false},
+		{"slash comment", `// copy the id from <PUT-YOUR-VPC-ID>`, false},
+		{"trailing hash", `vpc_id = "vpc-0a1b" # was <PUT-YOUR-VPC-ID>`, false},
+		{"trailing slash", `vpc_id = "vpc-0a1b" // was <PUT-YOUR-VPC-ID>`, false},
+		// A # inside a quoted string is not a comment.
+		{"hash in a string", `bucket = "<PUT-YOUR-BUCKET#1>"`, true},
+	} {
+		code := stripComment(test.line)
+		got := placeholderPattern.MatchString(code)
+		if got != test.wantFound {
+			t.Errorf("%s: %q -> found=%v, want %v (code half %q)", test.name, test.line, got, test.wantFound, code)
+		}
+	}
+}

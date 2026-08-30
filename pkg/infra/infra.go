@@ -90,8 +90,11 @@ type Layout struct {
 	Root string
 }
 
-// NewLayout returns the layout of the checkout at root, which must contain the
-// examples/aws directory this package drives.
+// NewLayout resolves root to an absolute path. It does NOT check that the directory
+// holds a checkout: validation is the caller's, because the two callers want
+// different things from a failure. cmd/lerian-infra checks with IsCheckout and then
+// prints the four ways of pointing at a checkout; a library consumer such as the
+// wizard decides for itself. Call IsCheckout if you need the guarantee.
 func NewLayout(root string) (Layout, error) {
 	absolute, err := filepath.Abs(root)
 	if err != nil {

@@ -178,10 +178,14 @@ func (r *Runner) Execute(
 
 		if confirm != nil {
 			if err := confirm(stage, result.Plans); err != nil {
-				progress.Finish(true)
+				// Updates BEFORE Finish, and not failed. A renderer that draws the
+				// final checklist inside Finish lost these rows entirely, and
+				// ErrAborted is a decision the operator made, not a failure of the
+				// run — the blocked branch above already gets both right.
 				for _, unit := range stage.Units {
 					progress.Update(unit.Name, StatusSkipped, "not confirmed.", "")
 				}
+				progress.Finish(!errors.Is(err, ErrAborted))
 				return results, err
 			}
 		}
@@ -350,12 +354,8 @@ func summarizeChanges(changes Changes, applied bool) string {
 	return strings.Join(parts, ", ")
 }
 
-// roundElapsed keeps the timing column narrow: whole seconds under a minute, and
-// no sub-second noise above it.
+// roundElapsed keeps the timing column narrow by dropping sub-second noise.
 func roundElapsed(d time.Duration) string {
-	if d < time.Minute {
-		return d.Round(time.Second).String()
-	}
 	return d.Round(time.Second).String()
 }
 

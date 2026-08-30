@@ -113,8 +113,11 @@ type Git interface {
 	Fetch(ctx context.Context, dir string) error
 	Checkout(ctx context.Context, dir, ref string) error
 	// DescribeRef reports the tag the checkout is on, or the empty string when it
-	// is not on one (a branch, or a detached commit with no tag).
-	DescribeRef(ctx context.Context, dir string) (string, error)
+	// is not on one — a branch, a commit between tags, a directory that is not a
+	// repository, or a git that cannot run. Every one of those means the same thing
+	// to a caller: the ref is unknown. There is no error to return, and a signature
+	// that promised one made callers write a branch that could never fire.
+	DescribeRef(ctx context.Context, dir string) string
 	// DirtyTracked lists modified tracked files. Untracked and ignored files are
 	// deliberately not reported: they are the operator's configuration, and their
 	// presence is the normal state of a working checkout.
@@ -189,7 +192,10 @@ func (g GitCLI) Clone(ctx context.Context, url, ref, dest string) error {
 	if ref != "" {
 		args = append(args, "--branch", ref)
 	}
-	args = append(args, url, dest)
+	// "--" before the URL: LERIAN_TEMPLATES_REPO is operator input, and a value
+	// starting with a dash would otherwise be parsed as an option such as
+	// --upload-pack=<cmd> instead of a repository.
+	args = append(args, "--", url, dest)
 	_, err := g.run(ctx, "", args...)
 	return err
 }
@@ -207,13 +213,12 @@ func (g GitCLI) Checkout(ctx context.Context, dir, ref string) error {
 // DescribeRef asks for the exact tag on HEAD. A checkout that is not on a tag —
 // main, or a commit between tags — reports "", which callers render as unknown
 // rather than guessing a version.
-func (g GitCLI) DescribeRef(ctx context.Context, dir string) (string, error) {
+func (g GitCLI) DescribeRef(ctx context.Context, dir string) string {
 	tag, err := g.run(ctx, dir, "describe", "--tags", "--exact-match", "HEAD")
 	if err != nil {
-		// Not being on a tag is an ordinary state, not a failure.
-		return "", nil
+		return ""
 	}
-	return tag, nil
+	return tag
 }
 
 func (g GitCLI) DirtyTracked(ctx context.Context, dir string) ([]string, error) {
@@ -280,9 +285,7 @@ func InspectCheckout(ctx context.Context, git Git, path string, managed bool) Ch
 		return state
 	}
 	state.Exists = true
-	if ref, err := git.DescribeRef(ctx, path); err == nil {
-		state.Ref = ref
-	}
+	state.Ref = git.DescribeRef(ctx, path)
 	return state
 }
 

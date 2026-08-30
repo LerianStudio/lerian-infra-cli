@@ -106,10 +106,15 @@ func placeholderLines(path string) ([]string, error) {
 	scanner := bufio.NewScanner(file)
 	for number := 1; scanner.Scan(); number++ {
 		line := scanner.Text()
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+		// HCL accepts both # and // for comments, and a comment can trail a value.
+		// Matching the raw line reported a placeholder inside a note — "# was
+		// <PUT-YOUR-VPC-ID>" — and CheckReadiness then refused to plan a file that
+		// was complete.
+		code := stripComment(line)
+		if strings.TrimSpace(code) == "" {
 			continue
 		}
-		if placeholderPattern.MatchString(line) {
+		if placeholderPattern.MatchString(code) {
 			found = append(found, fmt.Sprintf("%d: %s", number, strings.TrimSpace(line)))
 		}
 	}
@@ -117,4 +122,27 @@ func placeholderLines(path string) ([]string, error) {
 		return nil, err
 	}
 	return found, nil
+}
+
+// stripComment returns the code half of one HCL line.
+//
+// A # or // inside a quoted string is not a comment, so the scan tracks quotes
+// rather than taking the first marker it sees: a bucket named
+// "lerian-tfstate-dev#1" must not be truncated.
+func stripComment(line string) string {
+	inQuotes := false
+	for i := 0; i < len(line); i++ {
+		switch {
+		case line[i] == '\\' && inQuotes:
+			i++
+		case line[i] == '"':
+			inQuotes = !inQuotes
+		case inQuotes:
+		case line[i] == '#':
+			return line[:i]
+		case line[i] == '/' && i+1 < len(line) && line[i+1] == '/':
+			return line[:i]
+		}
+	}
+	return line
 }

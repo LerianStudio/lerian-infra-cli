@@ -738,3 +738,27 @@ func TestMaterializeVarFileLeavesModeAloneWhenUnset(t *testing.T) {
 		t.Errorf("an unset Mode must not change the file:\n%s", got)
 	}
 }
+
+// The region rewrite must not touch an end-of-line note. Replacing across the whole
+// line also edited the cost comments the templates carry, which is the prose the
+// function documentation promises to leave alone.
+func TestRetargetRegionLeavesTrailingCommentsAlone(t *testing.T) {
+	in := []byte(`region        = "us-east-1"
+instance_type = "db.r6g.large" # ~USD 300/month, us-east-1 on-demand
+# us-east-1 is the default in every example
+`)
+	out, from := retargetRegion(in, "us-east-2")
+	if from != "us-east-1" {
+		t.Fatalf("from = %q", from)
+	}
+	text := string(out)
+	if !strings.Contains(text, `region        = "us-east-2"`) {
+		t.Errorf("the code half was not rewritten:\n%s", text)
+	}
+	if !strings.Contains(text, "# ~USD 300/month, us-east-1 on-demand") {
+		t.Errorf("the trailing comment was rewritten:\n%s", text)
+	}
+	if !strings.Contains(text, "# us-east-1 is the default") {
+		t.Errorf("the whole-line comment was rewritten:\n%s", text)
+	}
+}

@@ -98,7 +98,20 @@ func parseHCLAssignment(line string) (key, value string, ok bool) {
 	}
 	key = strings.TrimSpace(line[:separator])
 	value = strings.TrimSpace(line[separator+1:])
-	value = strings.Trim(value, `"`)
+	// A quoted value ends at its closing quote; anything after it is a trailing
+	// comment. Trimming quote characters off both ends instead kept the comment in
+	// the value, and the account-suffix check then reported a false mismatch — in
+	// the one guard that has to be trustworthy. LoadBackend tells operators to write
+	// this file by hand, so a commented line is a realistic input.
+	if strings.HasPrefix(value, `"`) {
+		if end := strings.Index(value[1:], `"`); end >= 0 {
+			value = value[1 : 1+end]
+		} else {
+			value = strings.TrimPrefix(value, `"`)
+		}
+	} else if hash := strings.Index(value, "#"); hash >= 0 {
+		value = strings.TrimSpace(value[:hash])
+	}
 	if key == "" || value == "" {
 		return "", "", false
 	}
@@ -182,9 +195,14 @@ func (c CLIIdentity) CallerIdentity(ctx context.Context, profile, region string)
 		binary = "aws"
 	}
 
-	command := exec.CommandContext(ctx, binary,
-		"sts", "get-caller-identity", "--region", region,
-		"--query", "[Account,Arn]", "--output", "text")
+	args := []string{"sts", "get-caller-identity", "--query", "[Account,Arn]", "--output", "text"}
+	// An empty --region overrides the AWS CLI's own resolution with nothing, which
+	// can fail identity lookup outright. ResolveProfiles can reach here with no
+	// region when neither the request nor the profile carries one.
+	if region != "" {
+		args = append(args, "--region", region)
+	}
+	command := exec.CommandContext(ctx, binary, args...)
 	command.Env = os.Environ()
 	if profile != "" {
 		command.Env = append(command.Env, "AWS_PROFILE="+profile)

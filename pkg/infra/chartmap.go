@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -341,7 +342,10 @@ func ProductOf(unit Unit) string {
 // SharedUnitFor returns the tier root that owns this product datastore.
 func SharedUnitFor(layout Layout, unit Unit) Unit {
 	engine := EngineOf(unit)
-	dir := layout.ProductsDir() + "/" + sharedResources + "/" + engine
+	// Dir is a filesystem path and Name is the repository-relative identifier, so
+	// only one of them is built with separators: joining with "/" here produced a
+	// mixed path on Windows.
+	dir := filepath.Join(layout.ProductsDir(), sharedResources, engine)
 	return Unit{Dir: dir, Name: fmt.Sprintf("products/%s/%s", sharedResources, engine)}
 }
 

@@ -28,9 +28,11 @@ jobs:
       with:
         fetch-depth: 0
 
-    # commitlint reads commitlint.config.js from the checkout. The action bundles
+    # commitlint reads commitlint.config.cjs from the checkout. The action bundles
     # @commitlint/config-conventional, so there is no package.json and no npm here.
     - uses: wagoid/commitlint-github-action@v6
+      with:
+        configFile: commitlint.config.cjs
 
     - name: Set up Go
       uses: actions/setup-go@v5

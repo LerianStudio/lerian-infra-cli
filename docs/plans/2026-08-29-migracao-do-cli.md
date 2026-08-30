@@ -33,7 +33,7 @@ Actions (runners blacksmith), `gh`.
 |-------|-----------|-------|--------|
 | 1 | O código está no repo novo com histórico, compila, testa e gera binários localmente; o README explica o que o repo é | 1.1, 1.2 | Complete |
 | 2 | O pin de versão é declarado, não implícito, e um teste de CI prova a compatibilidade contra os templates reais | 2.1, 2.2 | Complete |
-| 3 | O repo de templates não tem mais Go, seu CI passa, e seu README aponta para o CLI | 3.1 | Epic-level |
+| 3 | O repo de templates não tem mais Go, seu CI passa, e seu README aponta para o CLI | 3.1 | Complete |
 | 4 | `lerian-terraform-foundation v1.6.0` e `lerian-infra-cli v1.0.0` publicados; o wizard consome a lib sem `replace` | 4.1, 4.2, 4.3 | Epic-level |
 
 ---
@@ -331,7 +331,7 @@ origem)
 `release` do `ci.yml` tem `needs: [validate]`; `make` não tem targets Go; o README
 instala o CLI via link para `lerian-infra-cli`; `terraform fmt -check -recursive
 examples` passa
-**Status:** Pending
+**Status:** Done
 
 *(Sem tasks ainda. Decisões para a elaboração: `SECURITY.md` NÃO sai inteiro — a parte
 sobre account ids, secrets e state é dos templates e fica; a parte sobre o account guard

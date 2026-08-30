@@ -25,6 +25,11 @@ permissions:
 jobs:
   go:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    # commitlint lists the pull request's commits through the API, so it needs to
+    # read the PR. Nothing here writes.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:

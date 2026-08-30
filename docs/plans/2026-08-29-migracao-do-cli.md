@@ -32,7 +32,7 @@ Actions (runners blacksmith), `gh`.
 | Phase | Milestone | Epics | Status |
 |-------|-----------|-------|--------|
 | 1 | O código está no repo novo com histórico, compila, testa e gera binários localmente; o README explica o que o repo é | 1.1, 1.2 | Complete |
-| 2 | O pin de versão é declarado, não implícito, e um teste de CI prova a compatibilidade contra os templates reais | 2.1, 2.2 | Epic-level |
+| 2 | O pin de versão é declarado, não implícito, e um teste de CI prova a compatibilidade contra os templates reais | 2.1, 2.2 | Complete |
 | 3 | O repo de templates não tem mais Go, seu CI passa, e seu README aponta para o CLI | 3.1 | Epic-level |
 | 4 | `lerian-terraform-foundation v1.6.0` e `lerian-infra-cli v1.0.0` publicados; o wizard consome a lib sem `replace` | 4.1, 4.2, 4.3 | Epic-level |
 
@@ -273,7 +273,7 @@ aqui.
 **Done when:** `init --clone` clona `TemplatesRef`; `--sync` move para `TemplatesRef`;
 o aviso de divergência compara o checkout com `TemplatesRef`; um binário `dev` clona
 `TemplatesRef` em vez de `main`
-**Status:** Pending
+**Status:** Done
 
 *(Sem tasks ainda. Fatos para a elaboração: hoje `acquireTemplates` faz `ref :=
 version` e, se `version == "dev"`, clona o branch default com um aviso vermelho;
@@ -295,7 +295,14 @@ contrato de outputs o código não entende
 **Done when:** um job clona `lerian-terraform-foundation@TemplatesRef` e um teste Go,
 rodando contra esse checkout, verifica que os marcadores existem e que cada
 `_modules/<engine>/outputs.tf` declara os outputs que `ReadFacts` consome
-**Status:** Pending
+**Status:** Done
+
+*Feito em 2026-08-29. Três testes em `pkg/infra/templates_compat_test.go`, pulados sem
+`LERIAN_TEMPLATES_CHECKOUT`; o job `templates-compat` do `ci.yml` clona
+`lerian-terraform-foundation@TemplatesRef` e roda os três, e `release` depende dele.
+Validado localmente contra o checkout da foundation em `feat/aws-v2-foundation`: os
+três passam. **O job ficará VERMELHO no CI até a `v1.6.0` existir na foundation** —
+é o mecanismo que impõe a ordem de release (Epic 4.1 antes de 4.2), não um defeito.*
 
 *(Sem tasks ainda. O que já se sabe: hoje NENHUM teste lê HCL — `TestMidazShapeIsTheSameInBothModes`
 compara o mapper Go com um literal escrito no próprio teste, então se o HCL divergir

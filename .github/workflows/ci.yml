@@ -60,8 +60,47 @@ jobs:
     - name: Go Test
       run: go test ./... -cover
 
+  # Proves the declared templates ref is one this code understands. Every other test
+  # runs against fixtures; this one clones lerian-terraform-foundation at TemplatesRef
+  # and reads the real outputs.tf. A bump of the constant to a tag the code cannot
+  # drive fails here, not on an operator's first run.
+  #
+  # It also enforces release order: the tag has to exist in the templates repository
+  # before a CLI that declares it can go green. The templates repository is public, so
+  # the checkout needs no token.
+  templates-compat:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Read the declared templates ref
+      id: ref
+      run: |
+        ref=$(sed -n 's/^const TemplatesRef = "\(.*\)"$/\1/p' pkg/infra/templates.go)
+        test -n "$ref" || { echo "TemplatesRef not found in pkg/infra/templates.go" >&2; exit 1; }
+        echo "ref=$ref" >> "$GITHUB_OUTPUT"
+        echo "templates ref: $ref"
+
+    - name: Check out the templates at that ref
+      uses: actions/checkout@v4
+      with:
+        repository: LerianStudio/lerian-terraform-foundation
+        ref: ${{ steps.ref.outputs.ref }}
+        path: templates
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Compatibility tests
+      env:
+        LERIAN_TEMPLATES_CHECKOUT: ${{ github.workspace }}/templates
+      run: go test ./pkg/infra/ -run 'Templates|MidazRoots|MappedProduct' -v
+
   release:
-    needs: [go]
+    needs: [go, templates-compat]
     runs-on: blacksmith-4vcpu-ubuntu-2404
     if: github.event_name == 'push'
     steps:

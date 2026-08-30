@@ -20,28 +20,33 @@ Two things live here:
 
 ## Install
 
-> **This repository is private for now**, so release assets cannot be fetched
-> anonymously. Use the GitHub CLI, which handles the authentication:
-
 ```bash
-gh release download --repo LerianStudio/lerian-infra-cli \
-  --pattern "lerian-infra_*_$(uname -s)_$(uname -m | sed 's/aarch64/arm64/').tar.gz" \
-  --pattern checksums.txt
-sha256sum -c checksums.txt --ignore-missing     # or: shasum -a 256 -c
-tar xzf lerian-infra_*.tar.gz lerian-infra && install -m 0755 lerian-infra ~/.local/bin/
+curl -fsSL https://raw.githubusercontent.com/LerianStudio/lerian-infra-cli/main/scripts/install.sh | sh
 ```
 
-Once the repository is public, `scripts/install.sh` becomes the one-liner: it detects
-the platform, downloads the matching release, **verifies it against the published
-checksums**, installs into the first writable directory among `~/.local/bin`,
-`~/bin` and `/usr/local/bin`, and never calls `sudo`. Until then it is here, tested,
-and waiting for a public URL to point at.
+The script detects your platform, downloads the matching release, **verifies it against
+the published checksums**, and installs into the first writable directory among
+`~/.local/bin`, `~/bin` and `/usr/local/bin`. It never calls `sudo`, and installs
+nothing if the checksum does not match.
+
+| Variable | Does |
+| --- | --- |
+| `LERIAN_INFRA_VERSION` | Install a specific tag instead of the latest, e.g. `v1.0.0`. |
+| `INSTALL_DIR` | Install somewhere else. |
+
+Prefer to do it by hand, or on Windows? Take the archive from the [releases
+page](https://github.com/LerianStudio/lerian-infra-cli/releases) and verify it
+yourself:
+
+```bash
+tar xzf lerian-infra_<version>_Darwin_arm64.tar.gz
+sha256sum -c checksums.txt --ignore-missing
+```
 
 Or from source, with Go 1.26:
 
 ```bash
-GOPRIVATE=github.com/LerianStudio/* \
-  go install github.com/LerianStudio/lerian-infra-cli/cmd/lerian-infra@latest
+go install github.com/LerianStudio/lerian-infra-cli/cmd/lerian-infra@latest
 ```
 
 A binary built this way reports its version as `dev`.
@@ -97,12 +102,6 @@ doc, err     := runner.HelmValues(ctx, infra.Units(stages))
 The account guard runs before `NewRunner` (`LoadEnvConfig`, `LoadBackend`,
 `CheckBackend`, `VerifyAccount`) and has no bypass. A consumer of this library is
 expected to surface its errors, not route around them.
-
-Go modules need to know the repository is private:
-
-```bash
-export GOPRIVATE=github.com/LerianStudio/*
-```
 
 ## Development
 

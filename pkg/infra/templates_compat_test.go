@@ -39,8 +39,13 @@ func outputNames(t *testing.T, path string) map[string]bool {
 	if err != nil {
 		t.Fatalf("reading %s: %v", path, err)
 	}
+	return declaredOutputs(string(content))
+}
+
+// declaredOutputs is outputNames over content already read.
+func declaredOutputs(content string) map[string]bool {
 	names := map[string]bool{}
-	for _, m := range regexp.MustCompile(`(?m)^output\s+"([^"]+)"`).FindAllStringSubmatch(string(content), -1) {
+	for _, m := range regexp.MustCompile(`(?m)^output\s+"([^"]+)"`).FindAllStringSubmatch(content, -1) {
 		names[m[1]] = true
 	}
 	return names
@@ -115,11 +120,14 @@ func TestMidazRootsDeclareHelmValues(t *testing.T) {
 	root := templatesCheckout(t)
 	for engine := range chartMappers["midaz"] {
 		file := filepath.Join(root, "examples", "aws", "products", "midaz", engine, "outputs.tf")
-		names := outputNames(t, file)
-		if !names["helm_values"] {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			t.Errorf("products/midaz/%s: %v", engine, err)
+			continue
+		}
+		if !declaredOutputs(string(content))["helm_values"] {
 			t.Errorf("products/midaz/%s: no helm_values output", engine)
 		}
-		content, _ := os.ReadFile(file)
 		// The component key is how the HCL and the Go mapper agree on shape.
 		if !regexp.MustCompile(`(?m)^\s+ledger\s*=\s*\{`).Match(content) {
 			t.Errorf("products/midaz/%s: helm_values is not keyed by component (no ledger = { ... })", engine)
@@ -134,9 +142,12 @@ func TestMappedProductRootsDeclareTheModeVariable(t *testing.T) {
 	for product, engines := range chartMappers {
 		for engine := range engines {
 			file := filepath.Join(root, "examples", "aws", "products", product, engine, "variables.tf")
+			// Errorf, not Fatalf: a template bump that renames more than one root
+			// should report every gap in one run, not one per cycle.
 			content, err := os.ReadFile(file)
 			if err != nil {
-				t.Fatalf("reading %s: %v", file, err)
+				t.Errorf("reading %s: %v", file, err)
+				continue
 			}
 			if !regexp.MustCompile(`(?m)^variable\s+"mode"`).Match(content) {
 				t.Errorf("products/%s/%s: no variable \"mode\"; shared mode cannot be selected", product, engine)

@@ -99,7 +99,7 @@ func TestCloneUsesTheDeclaredTemplatesRef(t *testing.T) {
 	out := &bytes.Buffer{}
 	ask := &prompter{out: out, interactive: true}
 
-	t.Setenv("LERIAN_TEMPLATES_REPO", source)
+	t.Setenv(infra.TemplatesRepoEnv, source)
 
 	layout, err := acquireTemplates(context.Background(),
 		initOptions{clone: true, templatesDir: dest}, ask, out)
@@ -198,12 +198,12 @@ func TestMismatchNamesBothRefsAndDoesNotBlock(t *testing.T) {
 // that vendors the templates into its own git server. Without the override the
 // managed checkout would be unavailable to exactly those clients.
 func TestTemplatesRepoOverrideIsHonoured(t *testing.T) {
-	t.Setenv("LERIAN_TEMPLATES_REPO", "https://git.internal/mirror.git")
-	if got := templatesRepoForTest(); got != "https://git.internal/mirror.git" {
+	t.Setenv(infra.TemplatesRepoEnv, "https://git.internal/mirror.git")
+	if got := infra.TemplatesRepoURL(); got != "https://git.internal/mirror.git" {
 		t.Errorf("override ignored: %q", got)
 	}
-	t.Setenv("LERIAN_TEMPLATES_REPO", "   ")
-	if got := templatesRepoForTest(); !strings.Contains(got, "github.com/LerianStudio") {
+	t.Setenv(infra.TemplatesRepoEnv, "   ")
+	if got := infra.TemplatesRepoURL(); !strings.Contains(got, "github.com/LerianStudio") {
 		t.Errorf("blank override should fall back to the default: %q", got)
 	}
 }

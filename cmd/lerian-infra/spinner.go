@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -38,6 +39,8 @@ type spinner struct {
 	// inert marks a spinner on a destination that cannot repaint. It paints nothing
 	// and erases nothing.
 	inert bool
+	// once makes Stop idempotent.
+	once sync.Once
 }
 
 // brailleFrames is the dot_cycle from the gist this was modelled on: a 2x4 braille
@@ -138,12 +141,17 @@ func (s *spinner) Stop() {
 	if s.inert {
 		return
 	}
-	close(s.stop)
-	<-s.done
+	// sync.Once, because Stop reads as safe to repeat: it already tolerates a nil
+	// receiver and an inert spinner, so a caller reasonably pairs an explicit Stop
+	// with a defer. Closing s.stop twice panicked.
+	s.once.Do(func() {
+		close(s.stop)
+		<-s.done
 
-	s.mu.Lock()
-	s.erase()
-	s.mu.Unlock()
+		s.mu.Lock()
+		s.erase()
+		s.mu.Unlock()
+	})
 }
 
 // elapsedClock renders m:ss, which stays the same width for the whole run: a
@@ -157,9 +165,5 @@ func spaces(n int) string {
 	if n < 0 {
 		n = 0
 	}
-	out := make([]byte, n)
-	for i := range out {
-		out[i] = ' '
-	}
-	return string(out)
+	return strings.Repeat(" ", n)
 }

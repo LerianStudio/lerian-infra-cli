@@ -171,7 +171,7 @@ func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return err
 	}
 	if rest := flags.Args(); len(rest) > 0 {
-		return fmt.Errorf("unexpected argument %q\nRun lerian-infra init --help.", rest[0])
+		return fmt.Errorf("unexpected argument %q\nRun lerian-infra init --help", rest[0])
 	}
 
 	if err := opts.validateTemplateFlags(); err != nil {
@@ -428,7 +428,7 @@ func buildInitPlan(
 		mode = answer
 	}
 	if mode != "" && !infra.ValidMode(mode) {
-		return plan, fmt.Errorf("invalid --mode %q\nValid values: %s, %s.",
+		return plan, fmt.Errorf("invalid --mode %q\nValid values: %s, %s",
 			mode, infra.DedicatedMode, infra.SharedMode)
 	}
 	plan.mode = mode
@@ -467,7 +467,7 @@ func buildInitPlan(
 	// Compute every write as a dry run first: the confirmation must be about the
 	// real result, not a guess at it.
 	preview := infra.WriteOptions{Force: opts.force, DryRun: true}
-	real := infra.WriteOptions{Force: opts.force}
+	commit := infra.WriteOptions{Force: opts.force}
 	plan.forceSet = opts.force
 
 	specs := []infra.EnvSpec{plan.env}
@@ -480,7 +480,7 @@ func buildInitPlan(
 		result: envResult,
 		role:   "which AWS account this environment may touch",
 		apply: func(l infra.Layout) (infra.WriteResult, error) {
-			return infra.WriteEnvironmentsConf(l, specs, real)
+			return infra.WriteEnvironmentsConf(l, specs, commit)
 		},
 	})
 
@@ -511,7 +511,7 @@ func buildInitPlan(
 			result: result,
 			role:   "owns the instance",
 			apply: func(l infra.Layout) (infra.WriteResult, error) {
-				return infra.MaterializeVarFile(l, request, real)
+				return infra.MaterializeVarFile(l, request, commit)
 			},
 		})
 	}
@@ -560,7 +560,7 @@ func buildInitPlan(
 			result: result,
 			role:   role,
 			apply: func(l infra.Layout) (infra.WriteResult, error) {
-				return infra.MaterializeVarFile(l, request, real)
+				return infra.MaterializeVarFile(l, request, commit)
 			},
 		})
 	}
@@ -710,11 +710,31 @@ func resolveAPICIDR(ctx context.Context, opts initOptions, ask *prompter) (strin
 		if value == "auto" && !ask.interactive {
 			return detected, nil
 		}
-		return ask.ask(
+		answer, err := ask.ask(
 			"Which address may reach the Kubernetes API?",
 			"Only this address can talk to the cluster's control plane. "+
 				"The default is what this machine appears to come from.",
 			detected, "--api-cidr")
+		if err != nil {
+			return "", err
+		}
+		return validateBareAddress(answer)
+	}
+	return validateBareAddress(value)
+}
+
+// validateBareAddress refuses a value carrying a mask.
+//
+// The token in the templates already supplies one — cidrs = ["<PUT-YOUR-EGRESS-IP-HERE>/32"] —
+// so "203.0.113.0/24" would be written as "203.0.113.0/24/32" and fail at plan time,
+// far from the flag that caused it. The prompt and the usage text both say "no mask";
+// this is what makes that true.
+func validateBareAddress(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if strings.Contains(value, "/") {
+		return "", fmt.Errorf("--api-cidr takes a bare address, not a CIDR block: %q\n"+
+			"The templates add the /32 themselves. Pass just the address, for example\n"+
+			"203.0.113.7, or 'auto' to detect this machine's.", value)
 	}
 	return value, nil
 }

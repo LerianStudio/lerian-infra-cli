@@ -11,10 +11,40 @@ import (
 	"github.com/LerianStudio/lerian-infra-cli/pkg/infra"
 )
 
+// isolateAWS points the AWS CLI at empty configuration.
+//
+// Every test here passes --profile acme, and resolveCredentials calls
+// CLIIdentity.CallerIdentity whenever a profile is named — --account only rescues
+// the run after that call fails. So the comment claiming "no STS call" was wrong,
+// and on a machine or runner that happens to have a profile named acme the lookup
+// SUCCEEDS, returns a different account, and buildInitPlan fails on the mismatch.
+// Empty files make the failure deterministic everywhere.
+func isolateAWS(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	for _, pair := range [][2]string{
+		{"AWS_CONFIG_FILE", filepath.Join(dir, "config")},
+		{"AWS_SHARED_CREDENTIALS_FILE", filepath.Join(dir, "credentials")},
+	} {
+		if err := os.WriteFile(pair[1], nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv(pair[0], pair[1])
+	}
+	// Neither an ambient region nor ambient keys may leak in.
+	for _, name := range []string{
+		"AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION",
+		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+	} {
+		t.Setenv(name, "")
+	}
+}
+
 // initCheckout builds a repository with committed examples and no real config,
 // which is what a client's first clone looks like.
 func initCheckout(t *testing.T) string {
 	t.Helper()
+	isolateAWS(t)
 	root := t.TempDir()
 
 	mkExample := func(dir, env, body string) {
@@ -63,7 +93,7 @@ func TestInitWritesConfigAndVarFiles(t *testing.T) {
 	root := initCheckout(t)
 	var out, errOut bytes.Buffer
 
-	// --account avoids any STS call, which is what lets this run in CI.
+	// --account makes the STS call fail deterministically, which is what lets this run in CI.
 	err := runInit(context.Background(), []string{
 		"--repo", root,
 		"--env", "dev",

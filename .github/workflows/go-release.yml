@@ -25,6 +25,7 @@ on:
   release:
     types: [published]
 
+# goreleaser uploads the archives onto the release that triggered this run.
 permissions:
   contents: write
 
@@ -33,13 +34,13 @@ jobs:
     name: Build and attach binaries
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # goreleaser derives the version from the tag, so it needs the tags.
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           # Read from go.mod so the version lives in exactly one place. Hardcoding it
           # here is how a release ends up built by a different toolchain than the one
@@ -49,14 +50,37 @@ jobs:
 
       # The release must not ship a binary the test suite has not passed. ci.yml
       # gates the tag, but a release can also be published by hand.
+      # The declared templates ref must exist and still match this code. ci.yml
+      # gates the tag, but a release can also be published by hand, and that path
+      # would otherwise ship a binary whose TemplatesRef points at nothing.
+      - name: Read the declared templates ref
+        id: ref
+        run: |
+          ref=$(sed -n 's/^const TemplatesRef = "\(.*\)"$/\1/p' pkg/infra/templates.go)
+          test -n "$ref" || { echo "TemplatesRef not found" >&2; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the templates at that ref
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: LerianStudio/lerian-terraform-foundation
+          ref: ${{ steps.ref.outputs.ref }}
+          path: templates
+          persist-credentials: false
+
       - name: Test
+        env:
+          LERIAN_TEMPLATES_CHECKOUT: ${{ github.workspace }}/templates
         run: go test ./... -cover
 
       - name: Release
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
         with:
           distribution: goreleaser
-          version: '~> v2'
+          # An exact version, not a range: '~> v2' resolves to whatever GoReleaser
+          # released most recently, so the tool that builds a release could change
+          # between two runs of the same tag.
+          version: 'v2.18.0'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

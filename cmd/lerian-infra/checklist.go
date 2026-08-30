@@ -163,6 +163,11 @@ func (c *checklist) Update(unit string, status infra.Status, detail, remediation
 			label = fmt.Sprintf("%s %d stacks", label, len(stage.units))
 		}
 		if c.style.enabled {
+			// The previous one is stopped first. Replacing a live spinner leaked its
+			// painting goroutine, which then kept writing to c.out for the rest of the
+			// process — a cancelled run, or a stage whose results stop arriving, never
+			// reaches the phase-end branch that stops it.
+			c.spin.Stop()
 			c.spin = newSpinner(&c.mu, c.out, label)
 			return
 		}

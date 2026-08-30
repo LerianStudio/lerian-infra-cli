@@ -22,12 +22,16 @@ The binary and the Terraform templates ship from the same tag, so a fix released
 `v1.x.y` covers both halves. Report the version you are running rather than the
 version you cloned from, if they differ — the mismatch itself may be the problem.
 
-## What this repository does and does not hold
+## What the templates hold, and what they never hold
+
+The files below live in `LerianStudio/lerian-terraform-foundation`, or in a local
+checkout of it — not in this repository. They are listed here because this CLI reads
+and writes them, so its behaviour is what keeps them safe.
 
 The templates provision AWS infrastructure, so the security boundary is worth stating
 plainly.
 
-**Never in this repository, by design:**
+**Never committed, by design:**
 
 - **AWS account ids.** `examples/aws/environments.conf` and every
   `examples/aws/backend/<env>.hcl` are gitignored, because the state bucket name

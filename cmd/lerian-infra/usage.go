@@ -154,7 +154,7 @@ ENVIRONMENT VARIABLES
                       off automatically when the output is not a terminal, so a
                       redirected file or a CI log never contains escape codes.
   LERIAN_SPINNER      ascii falls back from the braille progress spinner to
-                      | / - \\, for a terminal or font that renders braille as
+                      | / - \, for a terminal or font that renders braille as
                       empty boxes.
 
 EXAMPLES

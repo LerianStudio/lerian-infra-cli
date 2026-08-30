@@ -526,10 +526,10 @@ func TestEnvironmentsConfConflictIsPerSectionNotPerFile(t *testing.T) {
 //
 // This test reads the real repository, not a fixture: a fixture would drift too.
 func TestEveryTemplatePlaceholderIsKnown(t *testing.T) {
-	root := filepath.Join("..", "..", "examples", "aws")
-	if _, err := os.Stat(root); err != nil {
-		t.Skipf("not running inside a checkout: %v", err)
-	}
+	// The templates are a different repository now, so there is nothing at ../../ to
+	// walk: this used to skip silently on every run. CI provides the checkout through
+	// LERIAN_TEMPLATES_CHECKOUT.
+	root := filepath.Join(templatesCheckout(t), "examples", "aws")
 
 	unknown := map[string][]string{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {

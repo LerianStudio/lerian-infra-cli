@@ -36,6 +36,11 @@ func (o initOptions) validateTemplateFlags() error {
 			"--repo says where the templates already are; --clone asks for them to be\n" +
 			"downloaded. Pick the one that is true.")
 	}
+	if o.sync && (o.clone || o.noClone) {
+		return errors.New("--sync cannot be combined with --clone or --no-clone\n" +
+			"Sync moves an existing managed checkout; it never creates one, so a clone\n" +
+			"decision has nothing to apply to.")
+	}
 	if o.sync && o.repo != "" {
 		return errors.New("--sync cannot be used with --repo\n" +
 			"A checkout you pointed at is yours: this command does not move it. Sync\n" +
@@ -181,6 +186,10 @@ func runSync(ctx context.Context, opts initOptions, out io.Writer) error {
 // A local build is not exempt: it declares a templates ref like any other, and a
 // developer running against the wrong tag benefits from hearing it just as much.
 func warnVersionMismatch(ctx context.Context, out io.Writer, layout infra.Layout, source checkoutSource) {
+	// No git means no way to read the checkout's tag, so there is nothing to compare
+	// and the warning is silently skipped. That is deliberate: a checkout handed over
+	// with --repo is usable without git, and refusing to run over a missing optional
+	// tool would be worse than not knowing the tag.
 	git, err := infra.NewGitCLI()
 	if err != nil {
 		return
@@ -209,10 +218,6 @@ func warnVersionMismatch(ctx context.Context, out io.Writer, layout infra.Layout
 		"This checkout came from "+string(source)+", so it is not managed and nothing "+
 			"was changed.", "    ", 76))+"\n\n")
 }
-
-// templatesRepoForTest exposes the resolved clone source, so the mirror override is
-// covered without reaching for the network.
-func templatesRepoForTest() string { return infra.TemplatesRepoURL() }
 
 func refLabel(ref string) string {
 	if ref == "" {

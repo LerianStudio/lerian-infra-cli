@@ -587,11 +587,15 @@ func TestSecretRefCarriesTheAdminIdentityAndNoCredential(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Facts has no password field at all, so this asserts the shape stays that way.
-	for _, forbidden := range []string{"password\":", "PASSWORD"} {
-		if strings.Contains(string(rendered), forbidden) &&
-			!strings.Contains(string(rendered), "shared-dev-postgres/password") {
-			t.Errorf("the document must carry references, never credentials:\n%s", rendered)
+	// The secret NAME legitimately contains "password", so it is removed before the
+	// search — the previous form ANDed the two conditions and could never fire,
+	// which meant the test proved nothing at all.
+	searchable := strings.ReplaceAll(string(rendered), ref.SecretName, "")
+	searchable = strings.ReplaceAll(searchable, ref.SecretARN, "")
+	for _, forbidden := range []string{"password\":", "PASSWORD", "secret_access_key"} {
+		if strings.Contains(searchable, forbidden) {
+			t.Errorf("the document must carry references, never credentials (%q):\n%s",
+				forbidden, rendered)
 		}
 	}
 	if !strings.Contains(string(rendered), "secret_refs") {

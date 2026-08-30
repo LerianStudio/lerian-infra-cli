@@ -1105,9 +1105,10 @@ func (r reported) Error() string { return r.summary }
 func summarise(err error) string {
 	line := firstLine(err.Error())
 	// The wrapped chain ends in the raw terraform output; the part before the last
-	// colon is this package's own explanation, which is the useful half.
+	// ": " is this package's own explanation, which is the useful half. Both
+	// branches used to return the whole line, so the documented trim never happened.
 	if index := strings.LastIndex(line, ": "); index > 0 && index < len(line)-2 {
-		return line
+		return line[:index]
 	}
 	return line
 }

@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"sort"
@@ -731,10 +732,21 @@ func resolveAPICIDR(ctx context.Context, opts initOptions, ask *prompter) (strin
 // this is what makes that true.
 func validateBareAddress(value string) (string, error) {
 	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
 	if strings.Contains(value, "/") {
 		return "", fmt.Errorf("--api-cidr takes a bare address, not a CIDR block: %q\n"+
 			"The templates add the /32 themselves. Pass just the address, for example\n"+
-			"203.0.113.7, or 'auto' to detect this machine's.", value)
+			"203.0.113.7, or 'auto' to detect this machine's", value)
+	}
+	// IPv4 specifically: the mask the templates append is /32, so a hostname or an
+	// IPv6 address would be written as "2001:db8::1/32" and fail at plan time, far
+	// from the flag that caused it.
+	if ip := net.ParseIP(value); ip == nil || ip.To4() == nil {
+		return "", fmt.Errorf("--api-cidr takes an IPv4 address: %q\n"+
+			"The templates append an IPv4 /32 mask, so a hostname or an IPv6 address\n"+
+			"cannot work. Pass something like 203.0.113.7, or 'auto'", value)
 	}
 	return value, nil
 }

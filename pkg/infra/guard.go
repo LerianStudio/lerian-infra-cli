@@ -208,10 +208,17 @@ func (c CLIIdentity) CallerIdentity(ctx context.Context, profile, region string)
 		command.Env = append(command.Env, "AWS_PROFILE="+profile)
 	}
 
-	output, err := command.CombinedOutput()
+	// stdout is parsed; stderr only reaches the error text. The AWS CLI writes
+	// warnings and deprecation notices to stderr, and merging them meant fields[0]
+	// could be a warning token — VerifyAccount then reported an account mismatch
+	// naming something that is not an account, a false diagnosis of the one check
+	// this package exists for.
+	var stderr strings.Builder
+	command.Stderr = &stderr
+	output, err := command.Output()
 	if err != nil {
 		return Caller{}, fmt.Errorf("aws sts get-caller-identity failed: %w\n%s",
-			err, strings.TrimSpace(string(output)))
+			err, strings.TrimSpace(stderr.String()))
 	}
 
 	fields := strings.Fields(string(output))

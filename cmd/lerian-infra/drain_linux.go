@@ -10,6 +10,6 @@ import (
 
 // drainStdin discards anything typed before the prompt was printed. See
 // drain_bsd.go for why this exists; Linux spells the same flush differently.
-func drainStdin() {
-	_ = unix.IoctlSetInt(int(os.Stdin.Fd()), unix.TCFLSH, unix.TCIFLUSH)
+func drainStdin() error {
+	return unix.IoctlSetInt(int(os.Stdin.Fd()), unix.TCFLSH, unix.TCIFLUSH)
 }

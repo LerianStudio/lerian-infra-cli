@@ -24,9 +24,10 @@ import (
 // descriptor: the shell shares this descriptor, and a process that dies between
 // setting and restoring that flag leaves the shell with a non-blocking stdin.
 //
-// Best effort by design. When stdin is not a terminal there is nothing to flush
-// and the error is the answer.
-func drainStdin() {
+// When stdin is not a terminal there is nothing to flush and the ioctl fails;
+// the caller treats that as "nothing was queued", because a non-terminal stdin
+// cannot have a typed-ahead answer waiting in it.
+func drainStdin() error {
 	// FREAD (1) from <sys/fcntl.h>: discard the input queue, leave output alone.
-	_ = unix.IoctlSetPointerInt(int(os.Stdin.Fd()), unix.TIOCFLUSH, 1)
+	return unix.IoctlSetPointerInt(int(os.Stdin.Fd()), unix.TIOCFLUSH, 1)
 }

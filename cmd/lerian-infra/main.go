@@ -699,7 +699,10 @@ func confirmOnStdin(out io.Writer, prompt string) error {
 	// Only what is typed after the question counts as the answer. Stages here take
 	// minutes, and anything pressed while waiting is still queued when the prompt
 	// finally appears.
-	drainStdin()
+	if err := drainStdin(); err != nil {
+		return fmt.Errorf("cannot make sure the confirmation is answered deliberately: %w\n"+
+			"Re-run with --auto-approve if you mean to skip it.", err)
+	}
 
 	fmt.Fprint(out, prompt)
 	reader := bufio.NewReader(os.Stdin)

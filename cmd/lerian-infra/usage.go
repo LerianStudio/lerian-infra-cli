@@ -95,7 +95,8 @@ FLAGS
   --help                  This text.
 
 THE ACCOUNT GUARD
-  Three checks run before anything else, and two of them cost no AWS call:
+  Three checks run before anything else, and two of them cost no AWS call. A
+  --dry-run makes no AWS call at all, so it runs the first two and skips the third:
 
     1. the state bucket in backend/<env>.hcl ends in -<account_id>, which catches
        a backend file left over from another account;

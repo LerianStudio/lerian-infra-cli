@@ -11,7 +11,8 @@ name: Go Release
 #
 # LerianStudio/github-actions-shared-workflows/.github/workflows/go-release.yml was a
 # goreleaser workflow at v1.3.5 — which is what lerian-cli still pins — and has since
-# been repurposed. At v1.58.1 the same filename is a container-image and GitOps
+# been repurposed. At v1.62.0, the current release, the same filename is a
+# container-image and GitOps
 # umbrella (changes -> release -> build -> gitops-update) with no goreleaser step in
 # it at all, and no other workflow in that repository provides one. Pinning v1.3.5
 # would tie this release to a contract its owners have moved off, roughly fifty

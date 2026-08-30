@@ -66,7 +66,7 @@ func fakeTemplatesRepo(t *testing.T) string {
 	}
 	run("add", "-A")
 	run("commit", "-qm", "v1.6.0 tree")
-	run("tag", "v1.6.0")
+	run("tag", TemplatesRef)
 
 	if err := os.WriteFile(filepath.Join(dir, "NEW.md"), []byte("added in 1.7.0\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -85,15 +85,15 @@ func TestCloneTemplatesPinsTheRequestedTag(t *testing.T) {
 	git := GitCLI{}
 	dest := filepath.Join(t.TempDir(), "terraform-foundation")
 
-	if err := git.Clone(context.Background(), source, "v1.6.0", dest); err != nil {
+	if err := git.Clone(context.Background(), source, TemplatesRef, dest); err != nil {
 		t.Fatal(err)
 	}
 	if !IsCheckout(dest) {
 		t.Fatal("the clone should be recognised as a checkout")
 	}
 	state := InspectCheckout(context.Background(), git, dest, true)
-	if !state.AtVersion("v1.6.0") {
-		t.Errorf("state = %+v, want ref v1.6.0", state)
+	if !state.AtVersion(TemplatesRef) {
+		t.Errorf("state = %+v, want the declared ref", state)
 	}
 	// The later tag's file must NOT be there: a pin that silently gives you main is
 	// worse than no pin, because the version line then lies.
@@ -112,7 +112,7 @@ func TestSyncTemplatesKeepsTheOperatorsConfiguration(t *testing.T) {
 	ctx := context.Background()
 	dest := filepath.Join(t.TempDir(), "terraform-foundation")
 
-	if err := git.Clone(ctx, source, "v1.6.0", dest); err != nil {
+	if err := git.Clone(ctx, source, TemplatesRef, dest); err != nil {
 		t.Fatal(err)
 	}
 
@@ -151,7 +151,7 @@ func TestSyncTemplatesRefusesModifiedTrackedFiles(t *testing.T) {
 	ctx := context.Background()
 	dest := filepath.Join(t.TempDir(), "terraform-foundation")
 
-	if err := git.Clone(ctx, source, "v1.6.0", dest); err != nil {
+	if err := git.Clone(ctx, source, TemplatesRef, dest); err != nil {
 		t.Fatal(err)
 	}
 	edited := filepath.Join(dest, ".gitignore")
@@ -167,7 +167,7 @@ func TestSyncTemplatesRefusesModifiedTrackedFiles(t *testing.T) {
 		t.Errorf("the error must name the file it refused to move:\n%v", err)
 	}
 	// And it must not have moved anyway.
-	if state := InspectCheckout(ctx, git, dest, true); !state.AtVersion("v1.6.0") {
+	if state := InspectCheckout(ctx, git, dest, true); !state.AtVersion(TemplatesRef) {
 		t.Errorf("refused but moved anyway: %+v", state)
 	}
 }
@@ -180,7 +180,7 @@ func TestUntrackedFilesAreNotDirt(t *testing.T) {
 	ctx := context.Background()
 	dest := filepath.Join(t.TempDir(), "terraform-foundation")
 
-	if err := git.Clone(ctx, source, "v1.6.0", dest); err != nil {
+	if err := git.Clone(ctx, source, TemplatesRef, dest); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dest, "untracked-note.txt"), []byte("x"), 0o644); err != nil {
@@ -234,16 +234,18 @@ func TestABranchCheckoutIsNotAtAnyVersion(t *testing.T) {
 
 // Cloning into a non-empty directory would interleave two trees. Refuse instead.
 func TestCloneRefusesANonEmptyDestination(t *testing.T) {
-	source := fakeTemplatesRepo(t)
+	// The override is set so a regression that reordered the checks reaches the
+	// fixture and not github.com: the test passed only because the non-empty guard
+	// returns first, and the fixture was built and then discarded.
+	t.Setenv(TemplatesRepoEnv, fakeTemplatesRepo(t))
 	dest := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dest, "in-the-way.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := CloneTemplates(context.Background(), GitCLI{}, dest, "v1.6.0")
+	err := CloneTemplates(context.Background(), GitCLI{}, dest, TemplatesRef)
 	if err == nil || !strings.Contains(err.Error(), "not empty") {
 		t.Errorf("expected a refusal naming the directory, got %v", err)
 	}
-	_ = source
 }
 
 func TestManagedCheckoutPathHonoursTheOverride(t *testing.T) {
@@ -302,7 +304,7 @@ func TestDirtyTrackedNamesFilesExactly(t *testing.T) {
 	git := GitCLI{}
 	ctx := context.Background()
 	dest := filepath.Join(t.TempDir(), "terraform-foundation")
-	if err := git.Clone(ctx, source, "v1.6.0", dest); err != nil {
+	if err := git.Clone(ctx, source, TemplatesRef, dest); err != nil {
 		t.Fatal(err)
 	}
 

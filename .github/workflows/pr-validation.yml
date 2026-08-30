@@ -1,0 +1,41 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  validate:
+    uses: LerianStudio/github-actions-shared-workflows/.github/workflows/pr-validation.yml@v1.62.0
+    with:
+      runner_type: "blacksmith-4vcpu-ubuntu-2404"
+      pr_title_types: |
+        feat
+        fix
+        docs
+        style
+        refactor
+        perf
+        test
+        chore
+        ci
+        build
+        revert
+      # The scope allowlist this repository's commitlint config already enforces.
+      pr_title_scopes: |
+        release
+      require_scope: false
+      enable_auto_labeler: false
+    # This is the one shared workflow of the four that declares its secrets, so it
+    # is the one that can be given exactly what it takes instead of everything this
+    # repository holds. Both are optional there; naming them keeps the grant narrow
+    # and makes an added requirement fail loudly instead of arriving silently.
+    secrets:
+      MANAGE_TOKEN: ${{ secrets.MANAGE_TOKEN }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,106 @@
+name: Go Release
+
+# The one workflow this repository still owns, because the shared repository has
+# nothing that covers it: publishing binaries. LerianStudio/github-actions-shared-workflows
+# has no goreleaser step and no release-asset upload anywhere in it — its own
+# go-release.yml is a container-image and GitOps umbrella. Everything else here
+# (analysis, PR validation, security scan, semantic-release) is the shared workflow.
+#
+# It also carries the compatibility gate. The binary no longer pins a templates tag
+# — the operator passes --templates-ref — so the single claim it still makes is
+# TemplatesMinRef: the oldest templates its chart mapping understands. A release
+# must not ship a binary whose floor is wrong, so the floor is cloned and the
+# compatibility test runs against it before any artifact is published.
+#
+# Replace this with a `uses:` the moment that repository publishes a goreleaser
+# workflow.
+#
+# It reacts to the release that release.yml publishes, which is why .goreleaser.yml
+# runs in `mode: append` with its changelog disabled.
+
+on:
+  release:
+    types: [published]
+
+# goreleaser uploads the archives onto the release that triggered this run.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and attach binaries
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # goreleaser derives the version from the tag, so it needs the tags.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The floor must exist and still match this code. Read from the source rather
+      # than written here twice: a second copy of the number is a second thing to
+      # forget.
+      - name: Read the declared templates floor
+        id: ref
+        run: |
+          ref=$(sed -n 's/^const TemplatesMinRef = "\(.*\)"$/\1/p' pkg/infra/templates.go)
+          test -n "$ref" || { echo "TemplatesMinRef not found" >&2; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+          # The floor may name a templates tag that is not published yet — the two
+          # repositories release independently, and that is the point. A release
+          # that cannot run the compatibility test still ships: refusing would put
+          # the CLI's release line back under the templates' schedule, which is the
+          # coupling this design removed. It is loud in the summary instead.
+          if git ls-remote --exit-code --tags \
+              https://github.com/LerianStudio/lerian-terraform-foundation.git \
+              "refs/tags/$ref" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Templates floor $ref is not published yet"
+              echo
+              echo "The compatibility test did not run: it needs a clone of \`$ref\`"
+              echo "from LerianStudio/lerian-terraform-foundation, and that tag does"
+              echo "not exist. The binaries below were built and unit-tested, but"
+              echo "nothing proved they match real HCL."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check out the templates at the floor
+        if: steps.ref.outputs.published == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: LerianStudio/lerian-terraform-foundation
+          ref: ${{ steps.ref.outputs.ref }}
+          path: templates
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Read from go.mod so the version lives in exactly one place.
+          go-version-file: go.mod
+          cache: true
+
+      # The release must not ship a binary the suite has not passed.
+      # LERIAN_TEMPLATES_CHECKOUT is empty when the floor is not published: the
+      # compatibility test skips itself on an empty value, and the rest of the
+      # suite still has to pass.
+      - name: Test
+        env:
+          LERIAN_TEMPLATES_CHECKOUT: ${{ steps.ref.outputs.published == 'true' && format('{0}/templates', github.workspace) || '' }}
+        run: go test ./... -cover
+
+      - name: Release
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          # An exact version, not a range: '~> v2' resolves to whatever GoReleaser
+          # released most recently, so the tool that builds a release could change
+          # between two runs of the same tag.
+          version: 'v2.18.0'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

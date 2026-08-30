@@ -22,7 +22,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/LerianStudio/lerian-terraform-foundation/pkg/infra"
+	"github.com/LerianStudio/lerian-infra-cli/pkg/infra"
 )
 
 const initUsage = `lerian-infra init — write the configuration a fresh checkout needs

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/LerianStudio/lerian-terraform-foundation/pkg/infra"
+	"github.com/LerianStudio/lerian-infra-cli/pkg/infra"
 )
 
 // checklist renders a run as it happens, as a tree of stages.

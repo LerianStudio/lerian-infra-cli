@@ -1,4 +1,4 @@
-module github.com/LerianStudio/lerian-terraform-foundation
+module github.com/LerianStudio/lerian-infra-cli
 
 // Same toolchain the wizard declares. The two repositories are built together —
 // the wizard imports pkg/infra as a library — so a newer directive here would
@@ -15,11 +15,13 @@ require (
 	github.com/hashicorp/terraform-json v0.27.2
 )
 
-require golang.org/x/term v0.45.0
+require (
+	golang.org/x/sys v0.47.0
+	golang.org/x/term v0.45.0
+)
 
 require (
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/zclconf/go-cty v1.18.1 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 )

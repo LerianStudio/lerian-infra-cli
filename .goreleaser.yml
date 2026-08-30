@@ -1,9 +1,8 @@
 version: 2
 
-# The artifact is the CLI, so the archives are named after it and not after the
-# repository. Defaulting to the module name produced
-# "lerian-terraform-foundation_1.6.0_Darwin_arm64.tar.gz", which reads like an
-# archive of the Terraform templates — and it holds only the binary.
+# The artifact is the CLI, so the archives are named after the binary and not after
+# the repository: "lerian-infra_1.0.0_Darwin_arm64.tar.gz", not
+# "lerian-infra-cli_...". The name people type is the name they should download.
 project_name: lerian-infra
 
 # Release configuration for the lerian-infra binary.
@@ -73,10 +72,12 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+    # No CHANGELOG.md: this repository's .releaserc runs no changelog plugin, and the
+    # release notes live on the GitHub release the archive is attached to. Listing a
+    # file that is not there fails the build; shipping an empty one misleads.
     files:
       - README.md
       - LICENSE
-      - CHANGELOG.md
       - SECURITY.md
 
 checksum:
@@ -98,7 +99,7 @@ changelog:
 release:
   github:
     owner: LerianStudio
-    name: lerian-terraform-foundation
+    name: lerian-infra-cli
   draft: false
   prerelease: auto
   # append, not replace: the release already exists — semantic-release created it,

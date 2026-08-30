@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LerianStudio/lerian-terraform-foundation/pkg/infra"
+	"github.com/LerianStudio/lerian-infra-cli/pkg/infra"
 )
 
 // fakeCheckout builds a repository shaped like lerian-terraform-foundation, with

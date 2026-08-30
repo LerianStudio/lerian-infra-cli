@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LerianStudio/lerian-terraform-foundation/pkg/infra"
+	"github.com/LerianStudio/lerian-infra-cli/pkg/infra"
 )
 
 // initCheckout builds a repository with committed examples and no real config,

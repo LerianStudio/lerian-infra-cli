@@ -13,7 +13,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/LerianStudio/lerian-terraform-foundation/pkg/infra"
+	"github.com/LerianStudio/lerian-infra-cli/pkg/infra"
 )
 
 // devVersion is what a binary built without the release ldflag reports. It is not a

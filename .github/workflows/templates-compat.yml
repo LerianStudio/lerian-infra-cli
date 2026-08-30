@@ -1,0 +1,55 @@
+name: "Templates Compatibility"
+
+# Proves the declared TemplatesRef is a tag this code can actually drive.
+#
+# Every other test in pkg/infra runs against fixtures and cannot notice the
+# templates drifting underneath. This clones lerian-terraform-foundation at
+# TemplatesRef and reads the real outputs.tf. A bump of the constant to a tag the
+# code does not understand fails here, not on an operator's first run.
+#
+# It also enforces release order: the tag has to exist in the templates repository
+# before a CLI declaring it can go green.
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  templates-compat:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the declared templates ref
+        id: ref
+        run: |
+          ref=$(sed -n 's/^const TemplatesRef = "\(.*\)"$/\1/p' pkg/infra/templates.go)
+          test -n "$ref" || { echo "TemplatesRef not found in pkg/infra/templates.go" >&2; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "templates ref: $ref"
+
+      # The templates repository is public, so this needs no token.
+      - name: Check out the templates at that ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: LerianStudio/lerian-terraform-foundation
+          ref: ${{ steps.ref.outputs.ref }}
+          path: templates
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Compatibility tests
+        env:
+          LERIAN_TEMPLATES_CHECKOUT: ${{ github.workspace }}/templates
+        run: go test ./pkg/infra/ -run 'Templates|MidazRoots|MappedProduct' -v

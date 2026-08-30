@@ -123,11 +123,14 @@ expected to surface its errors, not route around them.
 ```bash
 make build    # bin/lerian-infra
 make test     # go test ./... -cover
-make lint     # gofmt + go vet — the same two checks CI runs, nothing else
+make lint     # gofmt + go vet. CI adds golangci-lint and gosec through the
+              # shared Go analysis workflow, so a green make is necessary, not
+              # sufficient.
 ```
 
-Commits follow [conventional commits](https://www.conventionalcommits.org/); CI
-enforces it and semantic-release cuts the tag. A release publishes binaries for Linux
+Commits follow [conventional commits](https://www.conventionalcommits.org/): the
+shared PR-validation workflow checks the title and semantic-release reads the
+commits to cut the tag. A release publishes binaries for Linux
 and macOS on `amd64` and `arm64`, plus Windows `amd64`, with `checksums.txt`.
 
 ## Security

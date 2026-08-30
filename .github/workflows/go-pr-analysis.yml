@@ -1,0 +1,35 @@
+name: "Go Analysis"
+
+# Lint, security, tests, coverage and build, through the org's shared workflow.
+# It replaced a hand-written job that did four of those five with less: this one
+# also runs golangci-lint, gosec and a coverage threshold, and it stays current
+# without this repository tracking action versions of its own.
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+
+jobs:
+  go-analysis:
+    name: Go Analysis
+    uses: LerianStudio/github-actions-shared-workflows/.github/workflows/go-pr-analysis.yml@v1.62.0
+    with:
+      runner_type: "blacksmith-4vcpu-ubuntu-2404"
+      app_name_prefix: "lerian-infra"
+      go_version: "1.26"
+      golangci_lint_version: "v2.6.2"
+      golangci_lint_args: "--timeout=5m"
+      coverage_threshold: 40
+      fail_on_coverage_threshold: true
+      enable_lint: true
+      enable_security: true
+      enable_tests: true
+      enable_coverage: true
+      enable_build: true
+    secrets: inherit

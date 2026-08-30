@@ -802,3 +802,32 @@ func TestSetModeLeavesCommentedAssignmentsAlone(t *testing.T) {
 		t.Errorf("the live assignment should be gone:\n%s", out)
 	}
 }
+
+// A comment BEFORE the value on the same line is the case that broke the splice:
+// the code half was shorter than the line, so re-appending line[len(code):] both
+// duplicated part of the assignment and ate the note. Comments blank in place now,
+// and the offsets line up.
+func TestRewritersSurviveALeadingBlockComment(t *testing.T) {
+	t.Run("setMode", func(t *testing.T) {
+		in := []byte("/* the shared tier owns this */ mode = \"dedicated\"\n")
+		got := string(setMode(in, "shared"))
+		want := "/* the shared tier owns this */ mode = \"shared\"\n"
+		if got != want {
+			t.Errorf("got  %q\nwant %q", got, want)
+		}
+	})
+
+	t.Run("retargetRegion", func(t *testing.T) {
+		in := []byte("region = \"us-east-1\"\n" +
+			"/* us-east-1 was the default */ availability_zone = \"us-east-1a\"\n")
+		got, from := retargetRegion(in, "us-east-2")
+		if from != "us-east-1" {
+			t.Fatalf("from = %q, want us-east-1", from)
+		}
+		want := "region = \"us-east-2\"\n" +
+			"/* us-east-1 was the default */ availability_zone = \"us-east-2a\"\n"
+		if string(got) != want {
+			t.Errorf("got  %q\nwant %q", got, want)
+		}
+	})
+}

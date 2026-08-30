@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -152,6 +153,26 @@ func (p *recordingProgress) Finish(failed bool) {
 	defer p.mu.Unlock()
 	p.finished = true
 	p.failed = failed
+}
+
+// terminalCount is how many times a unit was reported as finished, in any way. One
+// is the only correct answer: a consumer that counts completions per stage closes
+// the stage on the last one, and a second update for the same unit closes it early.
+func (p *recordingProgress) terminalCount(unit string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	count := 0
+	for _, update := range p.updates {
+		name, status, _ := strings.Cut(update, "=")
+		if name != unit {
+			continue
+		}
+		switch Status(status) {
+		case StatusOK, StatusFail, StatusSkipped:
+			count++
+		}
+	}
+	return count
 }
 
 func (p *recordingProgress) sawStatus(unit string, status Status) bool {

@@ -565,3 +565,45 @@ func TestDescribeChangesSeparatesTimingWithATab(t *testing.T) {
 		t.Errorf("elapsed = %q", elapsed)
 	}
 }
+
+// The blocked stage speaks once per unit, through runUnits, and the stage-level
+// Blocked flag is what says those failures were expected. A second per-unit update
+// closed the stage early in every consumer that counts completions: the checklist
+// increments stage.done on any non-running status, so it drew a duplicate row and
+// an early connector. Units of the stages BELOW are the opposite case — nothing ran
+// for them, so exactly one update has to arrive.
+func TestABlockedStageReportsEachUnitExactlyOnce(t *testing.T) {
+	terraform := newFakeTerraform()
+	terraform.changes["infra-base/vpc"] = Changes{Create: 42}
+	terraform.failures["plan infra-base/eks"] = errors.New("no matching EC2 VPC found")
+
+	progress := &recordingProgress{}
+	runner := newTestRunner(t, terraform, progress, 4)
+
+	results, err := runner.Execute(context.Background(), []Stage{
+		{Name: "infra-base/vpc", Units: units("infra-base/vpc")},
+		{Name: "infra-base/eks", Units: units("infra-base/eks")},
+		{Name: "midaz", Units: units("products/midaz/postgres")},
+	}, ActionPlan, nil)
+	if err != nil {
+		t.Fatalf("a first run is not a failure: %v", err)
+	}
+	if !Blocked(results) {
+		t.Fatal("the run should report blocked stages")
+	}
+
+	for _, unit := range []string{"infra-base/vpc", "infra-base/eks", "products/midaz/postgres"} {
+		if got := progress.terminalCount(unit); got != 1 {
+			t.Errorf("%s reached a terminal status %d times, want exactly 1: %v",
+				unit, got, progress.updates)
+		}
+	}
+	// The one that ran and failed keeps its own outcome; the one that never ran is
+	// skipped. Neither is invented by the blocked branch.
+	if !progress.sawStatus("infra-base/eks", StatusFail) {
+		t.Errorf("the blocked stage's unit reported its own failure: %v", progress.updates)
+	}
+	if !progress.sawStatus("products/midaz/postgres", StatusSkipped) {
+		t.Errorf("a stage that never ran is skipped: %v", progress.updates)
+	}
+}

@@ -684,9 +684,17 @@ func setMode(content []byte, mode string) []byte {
 		if strings.TrimSpace(code) == "" {
 			continue
 		}
-		if modeAssignment.MatchString(code) {
-			lines[i] = modeAssignment.ReplaceAllString(code, "${1}"+mode+"${2}") + line[len(code):]
+		// Matched on the code half, spliced into the ORIGINAL line. code blanks
+		// comments without moving anything, so these offsets address the same bytes
+		// in both — which is what lets a line like
+		//   /* was shared until Q2 */ mode = "dedicated"
+		// have its value rewritten with the note in front of it left alone.
+		match := modeAssignment.FindStringSubmatchIndex(code)
+		if match == nil {
+			continue
 		}
+		valueStart, valueEnd := match[3], match[4]
+		lines[i] = line[:valueStart] + mode + line[valueEnd:]
 	}
 	return joinLines(lines)
 }
@@ -729,14 +737,34 @@ func retargetRegion(content []byte, region string) ([]byte, string) {
 		// edited end-of-line notes such as
 		//   instance_type = "db.r6g.large" # ~USD 300/month, us-east-1 on-demand
 		// which is exactly the prose this function promises to leave alone.
-		code := comments.code(line)
-		// Only a trailing comment can be re-appended by length: anything else means
-		// the line is inside a block comment, and then there is nothing to rewrite.
-		if strings.HasPrefix(line, code) {
-			lines[i] = strings.ReplaceAll(code, from, region) + line[len(code):]
-		}
+		//
+		// The region is found in the code half and replaced in the original at the
+		// same offsets: code blanks comments in place rather than deleting them, so
+		// a note BEFORE the value is as safe as one after it.
+		lines[i] = replaceOutsideComments(line, comments.code(line), from, region)
 	}
 	return joinLines(lines), from
+}
+
+// replaceOutsideComments rewrites every occurrence of old that lies in the code
+// half of line, and leaves the ones inside comments as they are. code must be the
+// blanked-comment form of line, which shares its offsets byte for byte.
+func replaceOutsideComments(line, code, old, replacement string) string {
+	if old == "" {
+		return line
+	}
+	var out strings.Builder
+	for at := 0; at < len(line); {
+		found := strings.Index(code[at:], old)
+		if found < 0 {
+			out.WriteString(line[at:])
+			break
+		}
+		out.WriteString(line[at : at+found])
+		out.WriteString(replacement)
+		at += found + len(old)
+	}
+	return out.String()
 }
 
 // PlaceholdersIn returns the distinct placeholder tokens still present in a root's

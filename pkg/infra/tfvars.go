@@ -137,42 +137,65 @@ type commentScanner struct {
 	inBlock bool
 }
 
-// code returns the part of line that is configuration, with every comment removed.
+// code returns the configuration half of line with every comment byte BLANKED TO A
+// SPACE, never deleted. The result has exactly the length of the input, so an offset
+// into it is an offset into the original line.
+//
+// That property is the whole point. Deleting the bytes made the result a prefix of
+// the line only when the comment trailed, and the rewriters spliced with
+// line[len(code):] on that assumption. A leading block comment —
+//
+//	/* the shared tier owns this */ mode = "dedicated"
+//
+// — breaks it: the code half is shorter than its own start offset, and the splice
+// then duplicated part of the assignment and swallowed the comment. Blanking keeps
+// every position where it was, so a regex match on the code half addresses the same
+// bytes in the line it came from.
+//
+// Callers either trim the result or match it with a pattern that absorbs leading
+// whitespace, so the spaces cost them nothing.
 func (c *commentScanner) code(line string) string {
-	var out []byte
+	out := []byte(line)
+	blank := func(from, to int) {
+		for i := from; i < to; i++ {
+			out[i] = ' '
+		}
+	}
 	inQuotes := false
 	for i := 0; i < len(line); i++ {
 		if c.inBlock {
 			if line[i] == '*' && i+1 < len(line) && line[i+1] == '/' {
 				c.inBlock = false
+				blank(i, i+2)
 				i++
+				continue
 			}
+			out[i] = ' '
 			continue
 		}
 		switch {
 		case inQuotes && line[i] == '\\' && i+1 < len(line):
-			out = append(out, line[i], line[i+1])
 			i++
 		case line[i] == '"':
 			inQuotes = !inQuotes
-			out = append(out, line[i])
 		case inQuotes:
-			out = append(out, line[i])
 		case line[i] == '#':
+			// To end of line: a /* inside a # comment opens nothing.
+			blank(i, len(line))
 			return string(out)
 		case line[i] == '/' && i+1 < len(line) && line[i+1] == '/':
+			blank(i, len(line))
 			return string(out)
 		case line[i] == '/' && i+1 < len(line) && line[i+1] == '*':
 			c.inBlock = true
+			blank(i, i+2)
 			i++
-		default:
-			out = append(out, line[i])
 		}
 	}
 	return string(out)
 }
 
-// stripComment removes the comments from a single self-contained line.
+// stripComment blanks the comments in a single self-contained line.
 func stripComment(line string) string {
 	var scanner commentScanner
 	return scanner.code(line)

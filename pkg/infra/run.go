@@ -149,23 +149,22 @@ func (r *Runner) Execute(
 			if blocker := pendingCreator(results[:len(results)-1]); action == ActionPlan && blocker != "" {
 				results[len(results)-1].Blocked = true
 				results[len(results)-1].BlockedBy = blocker
-				// Only the units that did NOT plan. runUnits already pushed a terminal
-				// status for the ones that did, and a second one made every consumer
-				// counting completions per unit close the stage early — the checklist
+				// NOTHING is re-reported for THIS stage. Every one of its units already
+				// reached a terminal status inside runUnits — StatusOK or StatusFail,
+				// one per unit, always — and a second update per unit made every
+				// consumer counting completions close the stage early: the checklist
 				// increments stage.done on any non-running status, so it printed a
 				// duplicate row and an early connector.
-				planned := make(map[string]bool, len(results[len(results)-1].Plans))
-				for _, plan := range results[len(results)-1].Plans {
-					planned[plan.Unit.Name] = true
-				}
-				for _, unit := range stage.Units {
-					if planned[unit.Name] {
-						continue
-					}
-					progress.Update(unit.Name, StatusSkipped,
-						fmt.Sprintf("cannot be planned until %s is applied.", blocker), "")
-				}
-				// Everything below this stage is blocked for the same reason, so say
+				//
+				// What relabels those failures as expected is StageResult.Blocked,
+				// which the caller reads to print "not planned — needs <stage>
+				// applied first" and to make the run's exit code a success. Doing it
+				// per unit instead would need a renderer that can revise a line it
+				// already wrote, and this one is append-only on purpose: its output
+				// goes to CI logs and files, where cursor movement is garbage.
+				//
+				// The stages BELOW are different — they never ran, so nothing has
+				// spoken for their units yet.
 				// so instead of attempting each one and collecting identical failures.
 				for _, later := range stages[index+1:] {
 					blockedResult := StageResult{Stage: later, Blocked: true, BlockedBy: blocker}

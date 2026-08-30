@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install lerian-infra.
 #
-#   curl -fsSL https://raw.githubusercontent.com/LerianStudio/lerian-terraform-foundation/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/LerianStudio/lerian-infra-cli/main/scripts/install.sh | sh
 #
 # Downloads the release archive for this platform, VERIFIES IT against the
 # published checksums, and installs the binary. The verification is the reason this
@@ -17,7 +17,7 @@
 
 set -eu
 
-REPO="LerianStudio/lerian-terraform-foundation"
+REPO="LerianStudio/lerian-infra-cli"
 BINARY="lerian-infra"
 
 say() { printf '%s\n' "$*"; }

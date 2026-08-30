@@ -18,7 +18,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/LerianStudio/lerian-terraform-foundation/pkg/infra"
+	"github.com/LerianStudio/lerian-infra-cli/pkg/infra"
 )
 
 type prompter struct {

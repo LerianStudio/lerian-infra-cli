@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/LerianStudio/lerian-terraform-foundation/pkg/infra"
+	"github.com/LerianStudio/lerian-infra-cli/pkg/infra"
 )
 
 // TestChecklistDemo is a rendering preview, not an assertion: run it with -v to

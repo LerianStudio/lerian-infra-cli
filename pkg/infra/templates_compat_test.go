@@ -5,10 +5,18 @@ package infra
 // Every other test in this package runs against fixtures: a literal that stands in
 // for the HCL, a fake Terraform, a bare repository built in a temp dir. None of them
 // read a real outputs.tf, which means none of them can notice the templates drifting
-// under the binary. This file does. It is skipped unless LERIAN_TEMPLATES_CHECKOUT
-// points at a checkout of lerian-terraform-foundation — locally that is optional; in
-// CI a job clones TemplatesRef and sets it, so a bump of the constant to a tag the
-// code does not understand fails the build instead of the operator's first run.
+// under the binary. This file does.
+//
+// It is skipped unless LERIAN_TEMPLATES_CHECKOUT points at a checkout of
+// lerian-terraform-foundation, so it costs nothing by default:
+//
+//	LERIAN_TEMPLATES_CHECKOUT=/path/to/lerian-terraform-foundation go test ./pkg/infra/
+//
+// NO CI JOB RUNS IT TODAY. There was one, and it could never pass: TemplatesRef
+// names a tag the templates repository has not published yet, so every pull request
+// carried a red check that said nothing about the change under review. It comes back
+// as a shared workflow once that tag exists — until then this is a local check, and
+// the release workflow is what must not ship a binary whose declared ref is absent.
 
 import (
 	"os"

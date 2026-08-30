@@ -38,10 +38,22 @@ Prefer to do it by hand, or on Windows? Take the archive from the [releases
 page](https://github.com/LerianStudio/lerian-infra-cli/releases) and verify it
 yourself:
 
+Download the archive and `checksums.txt` from the same release, then, in the
+directory holding both:
+
 ```bash
-tar xzf lerian-infra_<version>_Darwin_arm64.tar.gz
-sha256sum -c checksums.txt --ignore-missing
+sha256sum -c checksums.txt --ignore-missing        # Linux
+shasum -a 256 -c checksums.txt --ignore-missing    # macOS
 ```
+
+```powershell
+# Windows PowerShell: compare the hash against the archive's line in checksums.txt
+(Get-FileHash .\lerian-infra_<version>_Windows_x86_64.zip -Algorithm SHA256).Hash.ToLower()
+Select-String -Path .\checksums.txt -Pattern 'Windows_x86_64'
+```
+
+Then unpack it — `tar xzf lerian-infra_<version>_Darwin_arm64.tar.gz`, or Explorer's
+"Extract All" for the Windows `.zip` — and put `lerian-infra` on your `PATH`.
 
 Or from source, with Go 1.26:
 

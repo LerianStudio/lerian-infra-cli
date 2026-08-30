@@ -114,7 +114,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			"This command takes flags only. Run lerian-infra --help.", rest[0])
 	}
 	if opts.showVersion {
-		fmt.Fprintf(stdout, "lerian-infra %s\n", version)
+		// The templates ref belongs here: the binary and the templates are two
+		// repositories on independent version lines, so "which version" is only
+		// answerable with both numbers — and a bug report that omits the ref
+		// hides the likeliest cause, a checkout sitting at another tag.
+		fmt.Fprintf(stdout, "lerian-infra %s (templates %s)\n", version, infra.TemplatesRef)
 		return nil
 	}
 

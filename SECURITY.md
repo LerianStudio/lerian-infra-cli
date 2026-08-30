@@ -18,9 +18,12 @@ We acknowledge within two business days.
 | ------- | --------- |
 | 1.x     | yes       |
 
-The binary and the Terraform templates ship from the same tag, so a fix released as
-`v1.x.y` covers both halves. Report the version you are running rather than the
-version you cloned from, if they differ — the mismatch itself may be the problem.
+The binary and the templates are released separately, from two repositories with
+independent version lines. Each binary declares the templates tag it was built
+against — `infra.TemplatesRef`, printed by `lerian-infra --version` and used by
+`--templates` to clone or sync — so a report needs both numbers: the CLI version and
+that ref. A checkout sitting at some other tag is itself a likely cause, and only
+those two numbers together make it visible.
 
 ## What the templates hold, and what they never hold
 

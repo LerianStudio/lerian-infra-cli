@@ -4,6 +4,19 @@ name: "Go Analysis"
 # It replaced a hand-written job that did four of those five with less: this one
 # also runs golangci-lint, gosec and a coverage threshold, and it stays current
 # without this repository tracking action versions of its own.
+#
+# The shared workflows are referenced by TAG, not by commit SHA, and deliberately:
+# every Lerian repository does, the tags are cut by the release pipeline of a
+# repository inside this same organisation, and a SHA here would freeze this one
+# repository out of the fleet-wide bumps that keep the tooling current. Third-party
+# actions are a different matter and are pinned by SHA — see go-release.yml.
+#
+# `secrets: inherit` for the same reason it is not a choice: this workflow, like
+# pr-security-scan.yml and release.yml, declares no `secrets:` in its workflow_call
+# block while its jobs read SLACK_WEBHOOK_URL (and, for release, the push-bot app
+# credentials). A secret not declared there cannot be passed by name — the call is
+# rejected — so inherit is the only form that works. pr-validation.yml declares
+# them, and there they are named one by one.
 
 on:
   pull_request:

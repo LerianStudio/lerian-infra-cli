@@ -327,14 +327,7 @@ func TestResolveLayoutPrefersTheWorkingDirectoryOverTheManagedCheckout(t *testin
 	managed := checkoutTree(t)
 	working := checkoutTree(t)
 
-	previous, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(previous) })
-	if err := os.Chdir(working); err != nil {
-		t.Fatal(err)
-	}
+	t.Chdir(working)
 
 	layout, source, err := resolveLayout("", "", managed)
 	if err != nil {
@@ -355,16 +348,8 @@ func TestResolveLayoutPrefersTheWorkingDirectoryOverTheManagedCheckout(t *testin
 func TestResolveLayoutFallsBackToTheManagedCheckout(t *testing.T) {
 	managed := checkoutTree(t)
 
-	previous, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(previous) })
 	// A directory that is NOT inside any checkout.
-	outside := t.TempDir()
-	if err := os.Chdir(outside); err != nil {
-		t.Fatal(err)
-	}
+	t.Chdir(t.TempDir())
 
 	layout, source, err := resolveLayout("", "", managed)
 	if err != nil {
@@ -382,17 +367,9 @@ func TestResolveLayoutFallsBackToTheManagedCheckout(t *testing.T) {
 // of four mechanisms they got wrong. The failure must name all four AND show the
 // value each one had.
 func TestResolveLayoutFailureNamesEveryPlaceItLooked(t *testing.T) {
-	previous, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(previous) })
-	outside := t.TempDir()
-	if err := os.Chdir(outside); err != nil {
-		t.Fatal(err)
-	}
+	t.Chdir(t.TempDir())
 
-	_, _, err = resolveLayout("", "", filepath.Join(t.TempDir(), "absent"))
+	_, _, err := resolveLayout("", "", filepath.Join(t.TempDir(), "absent"))
 	if err == nil {
 		t.Fatal("expected a failure with no checkout anywhere")
 	}

@@ -112,6 +112,26 @@ func shortName(stage, unit string) string {
 
 func (c *checklist) Start([]string) {}
 
+// stopSpinner stops the current spinner, if any, and must be called with c.mu HELD.
+//
+// It releases the mutex around Stop, and that is not an optimisation — it is the
+// only way this terminates. The spinner shares c.mu (newSpinner is handed &c.mu so a
+// frame cannot be painted between the two halves of a result line), its painting
+// goroutine takes that mutex on every tick, and Stop waits for that goroutine and
+// then takes the mutex itself. Calling Stop while Update holds c.mu deadlocks twice
+// over: the goroutine can never return, so <-s.done never fires, and the lock is
+// non-reentrant anyway.
+func (c *checklist) stopSpinner() {
+	if c.spin == nil {
+		return
+	}
+	spin := c.spin
+	c.spin = nil
+	c.mu.Unlock()
+	spin.Stop()
+	c.mu.Lock()
+}
+
 func (c *checklist) Update(unit string, status infra.Status, detail, remediation string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -163,11 +183,10 @@ func (c *checklist) Update(unit string, status infra.Status, detail, remediation
 			label = fmt.Sprintf("%s %d stacks", label, len(stage.units))
 		}
 		if c.style.enabled {
-			// The previous one is stopped first. Replacing a live spinner leaked its
-			// painting goroutine, which then kept writing to c.out for the rest of the
-			// process — a cancelled run, or a stage whose results stop arriving, never
-			// reaches the phase-end branch that stops it.
-			c.spin.Stop()
+			// The previous one is stopped first, or its painting goroutine outlives a
+			// cancelled run and keeps writing to c.out. It has to be stopped WITHOUT
+			// holding c.mu — see stopSpinner.
+			c.stopSpinner()
 			c.spin = newSpinner(&c.mu, c.out, label)
 			return
 		}
@@ -208,13 +227,7 @@ func (c *checklist) Update(unit string, status infra.Status, detail, remediation
 		// The stage is done with this phase. Stopping the spinner here is what lets
 		// the confirmation that follows own the terminal, and the blank line is what
 		// keeps that question from being glued to the last branch of the tree.
-		if c.spin != nil {
-			spin := c.spin
-			c.spin = nil
-			c.mu.Unlock()
-			spin.Stop()
-			c.mu.Lock()
-		}
+		c.stopSpinner()
 		fmt.Fprintln(c.out)
 	}
 }

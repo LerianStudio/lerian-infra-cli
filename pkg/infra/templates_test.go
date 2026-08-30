@@ -9,6 +9,16 @@ import (
 	"testing"
 )
 
+// The fixture's tags are literals, deliberately NOT TemplatesRef. Bumping that
+// constant is a routine reviewed commit, and tying the fixture to it meant that the
+// day it caught up with the fixture's later tag, these tests would quietly start
+// asserting a sync that moves nowhere — or a downgrade.
+const (
+	fixtureOldTag    = "v0.0.1-fixture"
+	fixturePinnedTag = "v0.0.2-fixture"
+	fixtureLaterTag  = "v0.0.3-fixture"
+)
+
 // hermeticGitEnv detaches git from the machine's own configuration.
 //
 // Without it the test inherits whatever the developer has set globally, and this
@@ -65,15 +75,15 @@ func fakeTemplatesRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	run("add", "-A")
-	run("commit", "-qm", "v1.6.0 tree")
-	run("tag", TemplatesRef)
+	run("commit", "-qm", "the pinned tree")
+	run("tag", fixturePinnedTag)
 
-	if err := os.WriteFile(filepath.Join(dir, "NEW.md"), []byte("added in 1.7.0\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "NEW.md"), []byte("added after the pinned tag\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	run("add", "-A")
-	run("commit", "-qm", "v1.7.0 tree")
-	run("tag", "v1.7.0")
+	run("commit", "-qm", "the later tree")
+	run("tag", fixtureLaterTag)
 
 	return dir
 }
@@ -85,20 +95,20 @@ func TestCloneTemplatesPinsTheRequestedTag(t *testing.T) {
 	git := GitCLI{}
 	dest := filepath.Join(t.TempDir(), "terraform-foundation")
 
-	if err := git.Clone(context.Background(), source, TemplatesRef, dest); err != nil {
+	if err := git.Clone(context.Background(), source, fixturePinnedTag, dest); err != nil {
 		t.Fatal(err)
 	}
 	if !IsCheckout(dest) {
 		t.Fatal("the clone should be recognised as a checkout")
 	}
 	state := InspectCheckout(context.Background(), git, dest, true)
-	if !state.AtVersion(TemplatesRef) {
+	if !state.AtVersion(fixturePinnedTag) {
 		t.Errorf("state = %+v, want the declared ref", state)
 	}
 	// The later tag's file must NOT be there: a pin that silently gives you main is
 	// worse than no pin, because the version line then lies.
 	if _, err := os.Stat(filepath.Join(dest, "NEW.md")); err == nil {
-		t.Error("v1.6.0 must not contain a file added in v1.7.0")
+		t.Error("the pinned tag must not carry a file added after it")
 	}
 }
 
@@ -112,7 +122,7 @@ func TestSyncTemplatesKeepsTheOperatorsConfiguration(t *testing.T) {
 	ctx := context.Background()
 	dest := filepath.Join(t.TempDir(), "terraform-foundation")
 
-	if err := git.Clone(ctx, source, TemplatesRef, dest); err != nil {
+	if err := git.Clone(ctx, source, fixturePinnedTag, dest); err != nil {
 		t.Fatal(err)
 	}
 
@@ -126,12 +136,12 @@ func TestSyncTemplatesKeepsTheOperatorsConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := SyncTemplates(ctx, git, dest, "v1.7.0"); err != nil {
+	if err := SyncTemplates(ctx, git, dest, fixtureLaterTag); err != nil {
 		t.Fatalf("SyncTemplates: %v", err)
 	}
 
-	if state := InspectCheckout(ctx, git, dest, true); !state.AtVersion("v1.7.0") {
-		t.Errorf("after sync: %+v, want v1.7.0", state)
+	if state := InspectCheckout(ctx, git, dest, true); !state.AtVersion(fixtureLaterTag) {
+		t.Errorf("after sync: %+v, want the later tag", state)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "NEW.md")); err != nil {
 		t.Error("the new tag's content should be present after sync")
@@ -151,7 +161,7 @@ func TestSyncTemplatesRefusesModifiedTrackedFiles(t *testing.T) {
 	ctx := context.Background()
 	dest := filepath.Join(t.TempDir(), "terraform-foundation")
 
-	if err := git.Clone(ctx, source, TemplatesRef, dest); err != nil {
+	if err := git.Clone(ctx, source, fixturePinnedTag, dest); err != nil {
 		t.Fatal(err)
 	}
 	edited := filepath.Join(dest, ".gitignore")
@@ -159,7 +169,7 @@ func TestSyncTemplatesRefusesModifiedTrackedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := SyncTemplates(ctx, git, dest, "v1.7.0")
+	err := SyncTemplates(ctx, git, dest, fixtureLaterTag)
 	if err == nil {
 		t.Fatal("a dirty checkout must not be moved")
 	}
@@ -167,7 +177,7 @@ func TestSyncTemplatesRefusesModifiedTrackedFiles(t *testing.T) {
 		t.Errorf("the error must name the file it refused to move:\n%v", err)
 	}
 	// And it must not have moved anyway.
-	if state := InspectCheckout(ctx, git, dest, true); !state.AtVersion(TemplatesRef) {
+	if state := InspectCheckout(ctx, git, dest, true); !state.AtVersion(fixturePinnedTag) {
 		t.Errorf("refused but moved anyway: %+v", state)
 	}
 }
@@ -180,7 +190,7 @@ func TestUntrackedFilesAreNotDirt(t *testing.T) {
 	ctx := context.Background()
 	dest := filepath.Join(t.TempDir(), "terraform-foundation")
 
-	if err := git.Clone(ctx, source, TemplatesRef, dest); err != nil {
+	if err := git.Clone(ctx, source, fixturePinnedTag, dest); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dest, "untracked-note.txt"), []byte("x"), 0o644); err != nil {
@@ -224,7 +234,7 @@ func TestABranchCheckoutIsNotAtAnyVersion(t *testing.T) {
 	if state.Ref != "" {
 		t.Errorf("an untagged commit should report no ref, got %q", state.Ref)
 	}
-	if state.AtVersion("v1.7.0") {
+	if state.AtVersion(fixtureLaterTag) {
 		t.Error("an unknown ref must not be reported as matching")
 	}
 	if !state.Exists {
@@ -242,7 +252,7 @@ func TestCloneRefusesANonEmptyDestination(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dest, "in-the-way.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := CloneTemplates(context.Background(), GitCLI{}, dest, TemplatesRef)
+	err := CloneTemplates(context.Background(), GitCLI{}, dest, fixturePinnedTag)
 	if err == nil || !strings.Contains(err.Error(), "not empty") {
 		t.Errorf("expected a refusal naming the directory, got %v", err)
 	}
@@ -304,7 +314,7 @@ func TestDirtyTrackedNamesFilesExactly(t *testing.T) {
 	git := GitCLI{}
 	ctx := context.Background()
 	dest := filepath.Join(t.TempDir(), "terraform-foundation")
-	if err := git.Clone(ctx, source, TemplatesRef, dest); err != nil {
+	if err := git.Clone(ctx, source, fixturePinnedTag, dest); err != nil {
 		t.Fatal(err)
 	}
 
@@ -385,13 +395,15 @@ func TestCloneReportsATagWithoutTheV2Layout(t *testing.T) {
 	}
 	// The clone is a valid clone of a real tag. Deleting a directory the operator
 	// just watched being created is a worse surprise than leaving it.
-	if !IsCheckoutDirPresent(dest) {
+	if !hasEntries(dest) {
 		t.Error("the clone should be left in place for inspection")
 	}
 }
 
-// IsCheckoutDirPresent reports whether anything was left at path.
-func IsCheckoutDirPresent(path string) bool {
+// hasEntries reports whether anything was left at path. Deliberately not named
+// after IsCheckout: that one answers whether a directory is a checkout, which is a
+// different question a word away.
+func hasEntries(path string) bool {
 	entries, err := os.ReadDir(path)
 	return err == nil && len(entries) > 0
 }

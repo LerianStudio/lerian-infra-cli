@@ -780,3 +780,25 @@ instance_type = "db.r6g.large"
 		t.Errorf("both mentions inside the block comment must survive:\n%s", text)
 	}
 }
+
+// setMode used to match the raw line, so a mode assignment inside a block comment
+// was rewritten. The templates explain both modes in prose, and that prose is what
+// tells an operator what the other mode does.
+func TestSetModeLeavesCommentedAssignmentsAlone(t *testing.T) {
+	in := []byte(`mode = "dedicated"
+/* switching to
+   mode = "shared"
+   makes this root create nothing */
+# mode = "shared" resolves the tier
+`)
+	out := string(setMode(in, "shared"))
+	if !strings.Contains(out, `mode = "shared"`) {
+		t.Errorf("the live assignment was not rewritten:\n%s", out)
+	}
+	if strings.Count(out, `mode = "shared"`) != 3 {
+		t.Errorf("the two commented mentions must survive untouched:\n%s", out)
+	}
+	if strings.Contains(out, `mode = "dedicated"`) {
+		t.Errorf("the live assignment should be gone:\n%s", out)
+	}
+}

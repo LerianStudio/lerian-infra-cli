@@ -189,23 +189,28 @@ func resolveComposite(layout Layout, catalog Catalog, target string) ([]Stage, e
 		if part == "" {
 			continue
 		}
-		if part == "all" {
-			// Built from the parts, not by string replacement: "midaz,all" left the
-			// "all" in place and suggested the command that had just been refused.
-			var rest []string
-			for _, other := range strings.Split(target, ",") {
-				if other = strings.TrimSpace(other); other != "" && other != "all" {
-					rest = append(rest, other)
-				}
-			}
-			return nil, fmt.Errorf("infra: 'all' cannot be combined with another target\n"+
-				"'all' already includes everything. Use it on its own, or list the parts:\n"+
-				"  --target %s", strings.Join(rest, ","))
-		}
 		parts = append(parts, part)
 	}
 	if len(parts) == 0 {
 		return nil, fmt.Errorf("infra: --target is empty")
+	}
+	// The decision comes AFTER the parts are collected. Refusing as soon as "all"
+	// appeared meant "--target all," — which reaches here because it has a comma —
+	// was rejected for being combined with nothing, and the suggestion it printed
+	// named no target at all.
+	var rest []string
+	for _, part := range parts {
+		if part != "all" {
+			rest = append(rest, part)
+		}
+	}
+	if len(rest) != len(parts) {
+		if len(rest) == 0 {
+			return Resolve(layout, catalog, "all")
+		}
+		return nil, fmt.Errorf("infra: 'all' cannot be combined with another target\n"+
+			"'all' already includes everything. Use it on its own, or list the parts:\n"+
+			"  --target %s", strings.Join(rest, ","))
 	}
 	if len(parts) == 1 {
 		return Resolve(layout, catalog, parts[0])

@@ -709,7 +709,10 @@ func resolveAPICIDR(ctx context.Context, opts initOptions, ask *prompter) (strin
 				"", "--api-cidr")
 		}
 		if value == "auto" && !ask.interactive {
-			return detected, nil
+			// Validated like every other path. DetectEgressIP only checks
+			// net.ParseIP, so an IPv6-only egress returns an IPv6 address, and the
+			// template would write "2001:db8::1/32".
+			return validateBareAddress(detected)
 		}
 		answer, err := ask.ask(
 			"Which address may reach the Kubernetes API?",

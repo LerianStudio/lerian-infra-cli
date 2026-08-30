@@ -12,11 +12,14 @@ package infra
 //
 //	LERIAN_TEMPLATES_CHECKOUT=/path/to/lerian-terraform-foundation go test ./pkg/infra/
 //
-// NO CI JOB RUNS IT TODAY. There was one, and it could never pass: TemplatesRef
-// names a tag the templates repository has not published yet, so every pull request
-// carried a red check that said nothing about the change under review. It comes back
-// as a shared workflow once that tag exists — until then this is a local check, and
-// the release workflow is what must not ship a binary whose declared ref is absent.
+// NO PULL-REQUEST JOB RUNS IT TODAY. There was one, and it could never pass:
+// TemplatesRef names a tag the templates repository has not published yet, so every
+// pull request carried a red check that said nothing about the change under review.
+// It comes back as a shared workflow once that tag exists.
+//
+// .github/workflows/go-release.yml DOES run it, before publishing binaries — which
+// is where it matters most: a release must not ship a binary whose declared
+// templates ref is absent.
 
 import (
 	"os"
@@ -87,6 +90,10 @@ func TestTemplatesDeclareTheOutputsReadFactsReads(t *testing.T) {
 	root := templatesCheckout(t)
 	required := []string{"endpoint", "port", "secret_arn", "secret_name", "identifier"}
 	userSpellings := []string{"username", "master_username", "admin_username"}
+	// A drift gate that inspects nothing passes. If the templates rename every root
+	// this walks, each path is skipped and the test would report success with zero
+	// assertions.
+	inspected := 0
 
 	for _, engine := range enginesUnderTest() {
 		for _, owner := range []string{
@@ -98,6 +105,7 @@ func TestTemplatesDeclareTheOutputsReadFactsReads(t *testing.T) {
 				// midaz does not use every engine (no msk), and that is fine.
 				continue
 			}
+			inspected++
 			names := outputNames(t, file)
 			for _, want := range required {
 				if !names[want] {
@@ -117,6 +125,10 @@ func TestTemplatesDeclareTheOutputsReadFactsReads(t *testing.T) {
 				t.Errorf("%s: transit_encryption_enabled missing; it decides REDIS_TLS", owner)
 			}
 		}
+	}
+	if inspected == 0 {
+		t.Fatalf("no root was inspected: every path under %s was missing, so this "+
+			"proved nothing", root)
 	}
 }
 

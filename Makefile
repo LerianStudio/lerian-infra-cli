@@ -1,6 +1,7 @@
-# lint is deliberately gofmt + go vet and not golangci-lint: these are the same two
-# checks the Go job in .github/workflows/ci.yml runs, so a green `make lint` means a
-# green CI, and neither needs anything installed beyond the Go toolchain.
+# lint here is gofmt + go vet, and needs nothing installed beyond the Go toolchain.
+# CI runs more: .github/workflows/go-pr-analysis.yml calls the shared Go workflow,
+# which adds golangci-lint, gosec and a coverage threshold. A green `make lint` is
+# the fast local floor, not proof that the pull request will be green.
 .PHONY: build test lint
 
 build:

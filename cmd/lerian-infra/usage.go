@@ -24,8 +24,9 @@ FIRST RUN
 
 FLAGS
   --repo <path>           The lerian-terraform-foundation checkout to drive.
-                          Rarely needed: this command is built from the checkout
-                          it drives, so running it anywhere inside one is enough.
+                          Rarely needed: running the command anywhere inside a
+                          checkout is enough, and a binary installed from the
+                          releases page finds the managed checkout on its own.
                           Resolution order:
                             1. --repo
                             2. $LERIAN_TF_REPO

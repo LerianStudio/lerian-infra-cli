@@ -24,9 +24,10 @@ import (
 // descriptor: the shell shares this descriptor, and a process that dies between
 // setting and restoring that flag leaves the shell with a non-blocking stdin.
 //
-// When stdin is not a terminal there is nothing to flush and the ioctl fails;
-// the caller treats that as "nothing was queued", because a non-terminal stdin
-// cannot have a typed-ahead answer waiting in it.
+// The error is returned, and both callers fail closed on it: they refuse the
+// confirmation rather than assume nothing was queued. Every caller checks for a
+// terminal first, so the non-terminal case does not reach here — the contract is the
+// same one drain_other.go and drain_windows.go implement.
 func drainStdin() error {
 	// FREAD (1) from <sys/fcntl.h>: discard the input queue, leave output alone.
 	return unix.IoctlSetPointerInt(int(os.Stdin.Fd()), unix.TIOCFLUSH, 1)

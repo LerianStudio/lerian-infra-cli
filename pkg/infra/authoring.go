@@ -676,14 +676,16 @@ func setMode(content []byte, mode string) []byte {
 	lines := splitLines(content)
 	var comments commentScanner
 	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			// Consumed anyway, so a block comment opened on a commented line is
-			// still tracked.
-			comments.code(line)
+		// The scanner runs on every line, code or not: it is stateful, and a /* that
+		// opens inside a comment still has to be tracked. Matching the raw line let a
+		// mode assignment inside a block comment be rewritten — the same prose damage
+		// retargetRegion already guards against.
+		code := comments.code(line)
+		if strings.TrimSpace(code) == "" {
 			continue
 		}
-		if modeAssignment.MatchString(line) {
-			lines[i] = modeAssignment.ReplaceAllString(line, "${1}"+mode+"${2}")
+		if modeAssignment.MatchString(code) {
+			lines[i] = modeAssignment.ReplaceAllString(code, "${1}"+mode+"${2}") + line[len(code):]
 		}
 	}
 	return joinLines(lines)

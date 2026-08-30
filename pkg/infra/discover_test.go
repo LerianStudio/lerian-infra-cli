@@ -511,3 +511,23 @@ func TestCompositeDoesNotScheduleAUnitTwice(t *testing.T) {
 		}
 	}
 }
+
+// "all," reaches resolveComposite because it has a comma, but its only real part is
+// all. Refusing on sight produced a message whose suggestion named no target.
+func TestAllWithOnlyEmptyPartsIsAccepted(t *testing.T) {
+	layout := fakeRepo(t, map[string][]string{"midaz": {"postgres"}})
+	catalog, err := Discover(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"all,", ",all", " all , "} {
+		stages, err := Resolve(layout, catalog, target)
+		if err != nil {
+			t.Errorf("%q names only all, so it is all: %v", target, err)
+			continue
+		}
+		if len(stages) == 0 {
+			t.Errorf("%q resolved to nothing", target)
+		}
+	}
+}

@@ -645,3 +645,33 @@ func mustJSON(t *testing.T, d Document) []byte {
 	}
 	return b
 }
+
+// A mode assignment inside a comment is prose. Reading it as configuration sends a
+// product's Helm values to the wrong tier — the values come out shaped for a shared
+// datastore the operator never chose.
+func TestReadDatastoreModeIgnoresEveryCommentForm(t *testing.T) {
+	root := t.TempDir()
+	unit := Unit{Dir: root, Name: "products/midaz/valkey"}
+	if err := os.MkdirAll(filepath.Join(root, "envs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ name, body, want string }{
+		{"live", `mode = "shared"`, SharedMode},
+		{"hash", "# mode = \"shared\"\nmode = \"dedicated\"", DedicatedMode},
+		{"slash", "// mode = \"shared\"\nmode = \"dedicated\"", DedicatedMode},
+		{"block", "/* mode = \"shared\"\n   was the old default */\nmode = \"dedicated\"", DedicatedMode},
+		{"only in a block", "/*\nmode = \"shared\"\n*/", DedicatedMode},
+		{"trailing", `mode = "dedicated" # mode = "shared" once`, DedicatedMode},
+	} {
+		if err := os.WriteFile(filepath.Join(root, "envs", "dev.tfvars"), []byte(test.body+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := readDatastoreMode(unit, "dev")
+		if err != nil {
+			t.Fatalf("%s: %v", test.name, err)
+		}
+		if got != test.want {
+			t.Errorf("%s: got %q, want %q", test.name, got, test.want)
+		}
+	}
+}

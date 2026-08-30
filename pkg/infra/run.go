@@ -149,7 +149,19 @@ func (r *Runner) Execute(
 			if blocker := pendingCreator(results[:len(results)-1]); action == ActionPlan && blocker != "" {
 				results[len(results)-1].Blocked = true
 				results[len(results)-1].BlockedBy = blocker
+				// Only the units that did NOT plan. runUnits already pushed a terminal
+				// status for the ones that did, and a second one made every consumer
+				// counting completions per unit close the stage early — the checklist
+				// increments stage.done on any non-running status, so it printed a
+				// duplicate row and an early connector.
+				planned := make(map[string]bool, len(results[len(results)-1].Plans))
+				for _, plan := range results[len(results)-1].Plans {
+					planned[plan.Unit.Name] = true
+				}
 				for _, unit := range stage.Units {
+					if planned[unit.Name] {
+						continue
+					}
 					progress.Update(unit.Name, StatusSkipped,
 						fmt.Sprintf("cannot be planned until %s is applied.", blocker), "")
 				}

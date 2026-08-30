@@ -367,8 +367,13 @@ func readDatastoreMode(unit Unit, env string) (string, error) {
 		return "", fmt.Errorf("infra: cannot read %s: %w", VarFile(unit, env), err)
 	}
 
+	var comments commentScanner
 	for _, line := range splitLines(content) {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+		// Comments in every HCL form, block ones included: a "mode = ..." inside a
+		// /* ... */ used to be read as live configuration, which sends a product's
+		// Helm values to the wrong tier.
+		line = comments.code(line)
+		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		match := modeAssignment.FindStringSubmatch(line)

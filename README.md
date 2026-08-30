@@ -70,19 +70,24 @@ needed for the step after the cluster exists; the CLI never calls it.
 ## The templates
 
 The CLI does not embed the Terraform. It drives a checkout of
-`lerian-terraform-foundation`, and each version of the CLI declares which tag of that
-repository it was built against. The chart mapping compiled into the binary and the
-`helm_values` expressions in the HCL are two halves of one contract, so the pairing is
-not left to chance:
+`lerian-terraform-foundation`, and **which release of it to run is yours to choose** —
+the two repositories have separate version lines, and the binary pins neither:
 
 ```bash
-lerian-infra init --env dev --clone     # clones the declared tag into ~/lerian/lerian-terraform-foundation
-lerian-infra init --env dev --sync      # after upgrading the binary, moves the checkout to match
+lerian-infra init --env dev --clone --templates-ref v1.6.0   # into ~/lerian/lerian-terraform-foundation
+lerian-infra init --env dev --sync  --templates-ref v1.7.0   # move an existing checkout to another tag
 ```
 
-Every command prints which checkout and which tag it is reading, and warns when they
-do not match what the binary expects. If you are already inside a checkout of the
-templates, nothing to do — the CLI finds it by walking up from the working directory.
+`--templates-ref` has no default. Run either command without it and the error lists
+the tags that exist, newest first.
+
+What the binary does declare is a floor — the oldest templates its chart mapping
+understands, printed by `lerian-infra --version`. Below it the same product comes out
+one shape in shared mode and another in dedicated, so below it is refused; above it,
+anything you name is yours to run. Every command prints the tag the checkout is on.
+
+Already inside a checkout of the templates? Nothing to do — the CLI finds it by
+walking up from the working directory.
 
 **The step-by-step for standing up an environment lives with the templates:**
 [lerian-terraform-foundation › AWS](https://github.com/LerianStudio/lerian-terraform-foundation#aws).

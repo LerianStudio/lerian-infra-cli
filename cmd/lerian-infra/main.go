@@ -114,11 +114,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			"This command takes flags only. Run lerian-infra --help.", rest[0])
 	}
 	if opts.showVersion {
-		// The templates ref belongs here: the binary and the templates are two
+		// The templates floor belongs here: the binary and the templates are two
 		// repositories on independent version lines, so "which version" is only
-		// answerable with both numbers — and a bug report that omits the ref
-		// hides the likeliest cause, a checkout sitting at another tag.
-		fmt.Fprintf(stdout, "lerian-infra %s (templates %s)\n", version, infra.TemplatesRef)
+		// answerable with both numbers — and a bug report that omits the templates
+		// tag hides the likeliest cause, a checkout older than this binary reads.
+		fmt.Fprintf(stdout, "lerian-infra %s (templates %s and later)\n", version, infra.TemplatesMinRef)
 		return nil
 	}
 
@@ -410,8 +410,9 @@ func templatesLine(ctx context.Context, layout infra.Layout, source checkoutSour
 			ref = "untagged"
 		}
 		line += " @ " + ref
-		if !state.AtVersion(infra.TemplatesRef) {
-			line += fmt.Sprintf("  (%s)  — binary built for %s", source, infra.TemplatesRef)
+		if infra.RefBelowMin(state.Ref) {
+			line += fmt.Sprintf("  (%s)  — older than %s, the oldest this binary reads",
+				source, infra.TemplatesMinRef)
 			return line
 		}
 	}

@@ -7,17 +7,12 @@ project_name: lerian-infra
 
 # Release configuration for the lerian-infra binary.
 #
-# This repository ships two things from one tag: the Terraform templates and the CLI
-# that drives them. The tag is shared on purpose — the chart mapping compiled into
-# the binary and the helm_values expressions in the HCL are two halves of one
-# contract, and pairing a binary with templates from another commit is how the same
-# product comes out one shape in shared mode and another in dedicated.
-#
-# The archives carry the BINARY ONLY, not the templates. The CLI acquires its own
-# templates: `lerian-infra init --clone` clones the tag matching the binary into
-# ~/lerian/lerian-terraform-foundation. Shipping a copy of examples/ inside the
-# tarball would give the operator a second, un-updatable tree with no git history to
-# pull from — worse than the clone in every way that matters.
+# The archives carry the BINARY ONLY, not the templates. Those live in
+# LerianStudio/lerian-terraform-foundation, on their own version line, and the
+# operator picks which release to run:
+# `lerian-infra init --clone --templates-ref <tag>`. Shipping a copy of examples/
+# inside the tarball would give them a second, un-updatable tree with no git history
+# to pull from — worse than the clone in every way that matters.
 
 before:
   hooks:
@@ -47,12 +42,11 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      # {{.Tag}}, NOT {{.Version}}. The value is used as a git ref — it is what
-      # `init --clone` checks out and what `--sync` moves to — so it has to BE the
-      # ref rather than something reconstructed from it. {{.Version}} strips the
-      # leading "v" (1.6.0), which would force a "v"+version concatenation here and
-      # break the moment tagFormat changes. Prerelease tags (v1.7.0-develop.3) also
-      # round-trip intact this way.
+      # {{.Tag}}, NOT {{.Version}}. This is the string `lerian-infra --version`
+      # prints and the one an operator quotes in a bug report, so it has to be the
+      # tag as cut. {{.Version}} strips the leading "v" (1.0.0), which would force a
+      # "v"+version concatenation here and break the moment tagFormat changes.
+      # Prerelease tags (v1.0.0-develop.3) round-trip intact this way.
       #
       # The target is main.version: the variable lives in package main at
       # cmd/lerian-infra/main.go, not in an internal/version package.
@@ -89,10 +83,10 @@ snapshot:
 
 # Disabled because semantic-release already writes the release notes.
 #
-# The release job in .github/workflows/ci.yml creates the GitHub release and its
-# body; goreleaser runs afterwards in append mode and only uploads artifacts. With a
-# changelog enabled it would append a SECOND generated changelog underneath the one
-# semantic-release just wrote.
+# The release job in .github/workflows/release.yml creates the GitHub release and
+# its body; go-release.yml then runs goreleaser in append mode, which only uploads
+# artifacts. With a changelog enabled it would append a SECOND generated changelog
+# underneath the one semantic-release just wrote.
 changelog:
   disable: true
 

@@ -20,6 +20,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -29,20 +31,31 @@ import (
 // helps most.
 const defaultTemplatesRepoURL = "https://github.com/LerianStudio/lerian-terraform-foundation.git"
 
-// TemplatesRef is the tag of lerian-terraform-foundation this build drives.
+// TemplatesMinRef is the OLDEST tag of lerian-terraform-foundation this build is
+// known to work with. It is a floor, not a pin.
 //
 // The CLI and the templates live in different repositories and release on their own
-// cadence, so nothing makes their versions coincide by construction. This constant is
-// the declaration that replaces that coincidence: `init --clone` checks out exactly
-// this ref, `--sync` moves an existing checkout to it, and every run compares the
-// checkout it found against it. The chart mapping compiled into this binary
-// (chartmap.go) and the helm_values expressions in the HCL at this ref are two halves
-// of one contract, tested together in CI against a clone of this very tag.
+// cadence. An exact pin made that honest — one binary, one tag — and it also made
+// the CLI unreleasable until the templates published the tag its source named, and
+// left an operator who wanted a newer templates release waiting for a CLI build that
+// merely renamed a constant. Neither is worth what the pin bought.
 //
-// It is a constant in the source and not an ldflag: the templates a build is
-// compatible with are a property of the code, decided when the code is written, and
-// bumping it is a reviewed commit rather than a release-time parameter.
-const TemplatesRef = "v1.6.0"
+// So the tag is the operator's: `init --clone` and `--sync` take it as
+// --templates-ref and there is no default. What stays here is the one thing the
+// operator cannot know — the oldest HCL the chart mapping compiled into this binary
+// (chartmap.go) was written against. CI proves it by cloning this tag and running
+// the compatibility test against it. Below this the shapes genuinely differ and the
+// CLI says so; at or above it, the contract is forward-compatible by convention and
+// a break is a bug in whichever side broke it.
+//
+// v1.6.0 is where the AWS v2 layout starts — examples/aws/_modules with one root
+// per product and per shared engine. Everything before it holds one directory per
+// resource, which this tool cannot drive at all, so the floor is not a matter of
+// taste: below it there is nothing to read.
+//
+// It is a constant in the source and not an ldflag: which templates a build
+// understands is a property of the code, decided when the code is written.
+const TemplatesMinRef = "v1.6.0"
 
 // TemplatesRepoEnv overrides where the templates are cloned from.
 //
@@ -122,6 +135,11 @@ type Git interface {
 	// deliberately not reported: they are the operator's configuration, and their
 	// presence is the normal state of a working checkout.
 	DirtyTracked(ctx context.Context, dir string) ([]string, error)
+	// RemoteTags lists the tags a repository publishes, without cloning it. It is
+	// what turns "--templates-ref is required" from an obstacle into a menu: the
+	// operator has to choose a tag, so the error that asks for one has to be able
+	// to say which ones exist.
+	RemoteTags(ctx context.Context, url string) ([]string, error)
 }
 
 // GitCLI drives the git binary.
@@ -235,6 +253,157 @@ func (g GitCLI) DirtyTracked(ctx context.Context, dir string) ([]string, error) 
 		}
 	}
 	return files, nil
+}
+
+// RemoteTags lists the tags the templates repository publishes, newest first.
+//
+// `ls-remote --tags` and not a clone: this runs while deciding WHETHER to clone, so
+// downloading the repository to find out which versions of it exist would be the
+// wrong way round. Peeled entries (refs/tags/v1.2.3^{}) are dropped — an annotated
+// tag appears twice and only the name matters here.
+func (g GitCLI) RemoteTags(ctx context.Context, url string) ([]string, error) {
+	out, err := g.runRaw(ctx, "", "ls-remote", "--tags", "--", url)
+	if err != nil {
+		return nil, err
+	}
+	var tags []string
+	for _, line := range strings.Split(out, "\n") {
+		_, ref, found := strings.Cut(strings.TrimSpace(line), "refs/tags/")
+		if !found || strings.HasSuffix(ref, "^{}") || ref == "" {
+			continue
+		}
+		tags = append(tags, ref)
+	}
+	SortRefs(tags)
+	return tags, nil
+}
+
+// SortRefs orders version tags newest first. Anything unparseable sorts last, by
+// name: a repository is free to carry tags that are not versions, and they are not
+// what a caller asking for the newest release means.
+func SortRefs(refs []string) {
+	sort.SliceStable(refs, func(i, j int) bool {
+		return CompareRefs(refs[i], refs[j]) > 0
+	})
+}
+
+// LatestRef returns the newest version tag, or "" when there is none.
+func LatestRef(refs []string) string {
+	for _, ref := range refs {
+		if _, ok := parseRef(ref); ok {
+			return ref
+		}
+	}
+	return ""
+}
+
+// CompareRefs orders two version tags: negative when a is older, positive when it
+// is newer, zero when they are the same version or neither is a version.
+//
+// Prereleases sort BELOW the release they lead to (v1.6.0-develop.1 < v1.6.0),
+// which is what semver says and what matters here: a floor of v1.5.0 must not be
+// satisfied by v1.5.0-develop.2, a tag cut before the release was finished.
+func CompareRefs(a, b string) int {
+	versionA, okA := parseRef(a)
+	versionB, okB := parseRef(b)
+	switch {
+	case !okA && !okB:
+		return strings.Compare(b, a)
+	case !okA:
+		return -1
+	case !okB:
+		return 1
+	}
+	for i := range 3 {
+		if versionA.number[i] != versionB.number[i] {
+			return versionA.number[i] - versionB.number[i]
+		}
+	}
+	switch {
+	case versionA.pre == versionB.pre:
+		return 0
+	case versionA.pre == "":
+		return 1
+	case versionB.pre == "":
+		return -1
+	}
+	return comparePrerelease(versionA.pre, versionB.pre)
+}
+
+// comparePrerelease orders two prerelease suffixes the way semver says: field by
+// field, numerically when both fields are numbers.
+//
+// String ordering is wrong here in a way that bites immediately — "develop.10" sorts
+// below "develop.2" as text, and semantic-release reaches double digits on any
+// branch that lives more than a week, so the newest prerelease would be reported as
+// the oldest.
+func comparePrerelease(a, b string) int {
+	fieldsA, fieldsB := strings.Split(a, "."), strings.Split(b, ".")
+	for i := range min(len(fieldsA), len(fieldsB)) {
+		if fieldsA[i] == fieldsB[i] {
+			continue
+		}
+		numberA, errA := strconv.Atoi(fieldsA[i])
+		numberB, errB := strconv.Atoi(fieldsB[i])
+		switch {
+		case errA == nil && errB == nil:
+			return numberA - numberB
+		case errA == nil:
+			// Numeric identifiers rank below alphanumeric ones, per semver.
+			return -1
+		case errB == nil:
+			return 1
+		}
+		return strings.Compare(fieldsA[i], fieldsB[i])
+	}
+	// Every shared field is equal: the one with more fields is the later prerelease.
+	return len(fieldsA) - len(fieldsB)
+}
+
+// RefBelowMin reports whether ref is older than TemplatesMinRef.
+//
+// A ref that is not a version answers FALSE: a branch, a fork's tag or a commit
+// between tags cannot be compared, and refusing to run — or nagging — over
+// something unmeasurable would punish exactly the development checkouts that have
+// good reason to look like that. What cannot be judged is not judged.
+func RefBelowMin(ref string) bool {
+	if _, ok := parseRef(ref); !ok {
+		return false
+	}
+	return CompareRefs(ref, TemplatesMinRef) < 0
+}
+
+// version is a tag split into what ordering needs.
+type version struct {
+	number [3]int
+	pre    string
+}
+
+// parseRef reads vMAJOR.MINOR.PATCH with an optional -prerelease suffix. Build
+// metadata (+sha) is ignored, as semver says it must be for ordering.
+func parseRef(ref string) (version, bool) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(ref), "v")
+	if !ok {
+		return version{}, false
+	}
+	if plus := strings.IndexByte(rest, '+'); plus >= 0 {
+		rest = rest[:plus]
+	}
+	core, pre, _ := strings.Cut(rest, "-")
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
+		return version{}, false
+	}
+	var parsed version
+	for i, part := range parts {
+		number, err := strconv.Atoi(part)
+		if err != nil || number < 0 {
+			return version{}, false
+		}
+		parsed.number[i] = number
+	}
+	parsed.pre = pre
+	return parsed, true
 }
 
 // porcelainPath extracts the path from one `status --porcelain` line, or "" when

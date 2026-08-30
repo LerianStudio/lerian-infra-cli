@@ -1,6 +1,6 @@
 package infra
 
-// Compatibility with the templates at TemplatesRef.
+// Compatibility with the templates at TemplatesMinRef.
 //
 // Every other test in this package runs against fixtures: a literal that stands in
 // for the HCL, a fake Terraform, a bare repository built in a temp dir. None of them
@@ -12,14 +12,12 @@ package infra
 //
 //	LERIAN_TEMPLATES_CHECKOUT=/path/to/lerian-terraform-foundation go test ./pkg/infra/
 //
-// NO PULL-REQUEST JOB RUNS IT TODAY. There was one, and it could never pass:
-// TemplatesRef names a tag the templates repository has not published yet, so every
-// pull request carried a red check that said nothing about the change under review.
-// It comes back as a shared workflow once that tag exists.
-//
-// .github/workflows/go-release.yml DOES run it, before publishing binaries — which
-// is where it matters most: a release must not ship a binary whose declared
-// templates ref is absent.
+// NO PULL-REQUEST JOB RUNS IT TODAY: it comes back as a shared workflow once the
+// shared repository has one that can clone a second repository. What does run it is
+// .github/workflows/go-release.yml, before publishing binaries, against a clone of
+// TemplatesMinRef — the floor this binary claims to understand. That is the whole
+// claim the release makes about the templates, so it is the one a release has to
+// prove.
 
 import (
 	"os"

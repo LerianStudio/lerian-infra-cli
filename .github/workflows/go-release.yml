@@ -1,16 +1,16 @@
 name: Go Release
 
 # The one workflow this repository still owns, because the shared repository has
-# nothing that covers it: publishing binaries. It also carries the TemplatesRef
-# check, which is now the ONLY place that check runs — the pull-request job that
-# used to do it was removed, because TemplatesRef names a tag the templates
-# repository has not published yet and every PR carried a permanently red check.
-# Here it is not noise: it is the gate that stops a release shipping a binary whose
-# declared templates ref does not exist. It moves to a shared workflow once that
-# tag is out. LerianStudio/github-actions-shared-workflows
+# nothing that covers it: publishing binaries. LerianStudio/github-actions-shared-workflows
 # has no goreleaser step and no release-asset upload anywhere in it — its own
 # go-release.yml is a container-image and GitOps umbrella. Everything else here
 # (analysis, PR validation, security scan, semantic-release) is the shared workflow.
+#
+# It also carries the compatibility gate. The binary no longer pins a templates tag
+# — the operator passes --templates-ref — so the single claim it still makes is
+# TemplatesMinRef: the oldest templates its chart mapping understands. A release
+# must not ship a binary whose floor is wrong, so the floor is cloned and the
+# compatibility test runs against it before any artifact is published.
 #
 # Replace this with a `uses:` the moment that repository publishes a goreleaser
 # workflow.
@@ -37,17 +37,39 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # The declared templates ref must exist and still match this code. The pull
-      # request gates it too, but a release can be published by hand, and that path
-      # would otherwise ship a binary whose TemplatesRef points at nothing.
-      - name: Read the declared templates ref
+      # The floor must exist and still match this code. Read from the source rather
+      # than written here twice: a second copy of the number is a second thing to
+      # forget.
+      - name: Read the declared templates floor
         id: ref
         run: |
-          ref=$(sed -n 's/^const TemplatesRef = "\(.*\)"$/\1/p' pkg/infra/templates.go)
-          test -n "$ref" || { echo "TemplatesRef not found" >&2; exit 1; }
+          ref=$(sed -n 's/^const TemplatesMinRef = "\(.*\)"$/\1/p' pkg/infra/templates.go)
+          test -n "$ref" || { echo "TemplatesMinRef not found" >&2; exit 1; }
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
-      - name: Check out the templates at that ref
+          # The floor may name a templates tag that is not published yet — the two
+          # repositories release independently, and that is the point. A release
+          # that cannot run the compatibility test still ships: refusing would put
+          # the CLI's release line back under the templates' schedule, which is the
+          # coupling this design removed. It is loud in the summary instead.
+          if git ls-remote --exit-code --tags \
+              https://github.com/LerianStudio/lerian-terraform-foundation.git \
+              "refs/tags/$ref" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Templates floor $ref is not published yet"
+              echo
+              echo "The compatibility test did not run: it needs a clone of \`$ref\`"
+              echo "from LerianStudio/lerian-terraform-foundation, and that tag does"
+              echo "not exist. The binaries below were built and unit-tested, but"
+              echo "nothing proved they match real HCL."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check out the templates at the floor
+        if: steps.ref.outputs.published == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: LerianStudio/lerian-terraform-foundation
@@ -63,9 +85,12 @@ jobs:
           cache: true
 
       # The release must not ship a binary the suite has not passed.
+      # LERIAN_TEMPLATES_CHECKOUT is empty when the floor is not published: the
+      # compatibility test skips itself on an empty value, and the rest of the
+      # suite still has to pass.
       - name: Test
         env:
-          LERIAN_TEMPLATES_CHECKOUT: ${{ github.workspace }}/templates
+          LERIAN_TEMPLATES_CHECKOUT: ${{ steps.ref.outputs.published == 'true' && format('{0}/templates', github.workspace) || '' }}
         run: go test ./... -cover
 
       - name: Release

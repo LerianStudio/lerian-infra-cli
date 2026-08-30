@@ -42,6 +42,12 @@ FLAGS
 
   --templates-dir <path>  Where the managed checkout lives, when not the default.
 
+  --templates-ref <tag>   init only. The lerian-terraform-foundation tag to clone
+                          or sync to. No default: which templates release to run is
+                          yours to choose, and this binary pins nothing. It does
+                          refuse anything below the floor it was built against;
+                          lerian-infra --version prints it.
+
   --env <dev|stg|prd>     REQUIRED. Selects the AWS account from
                           examples/aws/environments.conf, the backend file
                           examples/aws/backend/<env>.hcl, and the variables file

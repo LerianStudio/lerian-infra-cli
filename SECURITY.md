@@ -19,11 +19,15 @@ We acknowledge within two business days.
 | 1.x     | yes       |
 
 The binary and the templates are released separately, from two repositories with
-independent version lines. Each binary declares the templates tag it was built
-against — `infra.TemplatesRef`, printed by `lerian-infra --version` and used by
-`--templates` to clone or sync — so a report needs both numbers: the CLI version and
-that ref. A checkout sitting at some other tag is itself a likely cause, and only
-those two numbers together make it visible.
+independent version lines, and the templates tag is the operator's to choose:
+`init --clone --templates-ref <tag>`. A binary declares only the OLDEST templates it
+understands — `infra.TemplatesMinRef`, printed by `lerian-infra --version` — and
+refuses anything below it.
+
+So a report needs both numbers: the CLI version, and the tag the checkout is on
+(`git -C ~/lerian/lerian-terraform-foundation describe --tags`). Running a binary
+against templates far newer than it has seen is supported and normal, and is also a
+likely cause; only both numbers together make it visible.
 
 ## What the templates hold, and what they never hold
 

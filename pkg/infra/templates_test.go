@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-// The fixture's tags are literals, deliberately NOT TemplatesRef. Bumping that
-// constant is a routine reviewed commit, and tying the fixture to it meant that the
-// day it caught up with the fixture's later tag, these tests would quietly start
-// asserting a sync that moves nowhere — or a downgrade.
+// The fixture's tags are literals, deliberately unrelated to TemplatesMinRef. What
+// these tests exercise is clone and sync mechanics — any two ordered tags do that —
+// and tying them to a constant that moves would make an unrelated bump start
+// asserting a sync that goes nowhere, or a downgrade.
 const (
 	fixtureOldTag    = "v0.0.1-fixture"
 	fixturePinnedTag = "v0.0.2-fixture"
@@ -406,4 +406,94 @@ func TestCloneReportsATagWithoutTheV2Layout(t *testing.T) {
 func hasEntries(path string) bool {
 	entries, err := os.ReadDir(path)
 	return err == nil && len(entries) > 0
+}
+
+// Ordering is what the floor is enforced with, so it has to be semver ordering and
+// not string ordering: "v1.10.0" < "v1.9.0" as text, and a floor compared that way
+// would reject the newest release there is.
+func TestCompareRefsOrdersVersionsAndNotStrings(t *testing.T) {
+	for _, test := range []struct {
+		a, b string
+		want string
+	}{
+		{"v1.10.0", "v1.9.0", "newer"},
+		{"v1.5.0", "v1.5.0", "same"},
+		{"v2.0.0", "v1.99.99", "newer"},
+		{"v1.5.1", "v1.5.0", "newer"},
+		// A prerelease comes BEFORE the release it leads to: v1.5.0-develop.2 was cut
+		// while v1.5.0 was still being finished, so a floor of v1.5.0 must not accept
+		// it.
+		{"v1.5.0-develop.2", "v1.5.0", "older"},
+		{"v1.5.0-develop.10", "v1.5.0-develop.2", "newer"},
+		// Not versions at all: neither is comparable, and the answer must not be a
+		// silent "equal" that a floor check would read as "at the floor".
+		{"main", "v1.5.0", "older"},
+		{"v1.5.0", "some-branch", "newer"},
+	} {
+		got := CompareRefs(test.a, test.b)
+		var label string
+		switch {
+		case got > 0:
+			label = "newer"
+		case got < 0:
+			label = "older"
+		default:
+			label = "same"
+		}
+		if label != test.want {
+			t.Errorf("CompareRefs(%q, %q) says %s, want %s", test.a, test.b, label, test.want)
+		}
+	}
+}
+
+// The floor refuses what is below it and stays silent about everything else — most
+// importantly about tags NEWER than any this binary names, which are the normal case
+// now that the operator chooses the templates release.
+func TestRefBelowMinJudgesOnlyWhatItCanMeasure(t *testing.T) {
+	for ref, want := range map[string]bool{
+		"v0.9.0":          true,
+		"v1.4.99":         true,
+		TemplatesMinRef:   false,
+		"v99.0.0":         false,
+		"main":            false, // a branch cannot be compared
+		"":                false, // an untagged commit cannot either
+		"not-a-version":   false,
+		"release-2026-01": false,
+	} {
+		if got := RefBelowMin(ref); got != want {
+			t.Errorf("RefBelowMin(%q) = %v, want %v", ref, got, want)
+		}
+	}
+}
+
+// The refusal that asks for a tag is only useful because it can list the tags that
+// exist, and it lists them without cloning: this runs while deciding whether to
+// clone at all.
+func TestRemoteTagsListsTagsNewestFirstWithoutCloning(t *testing.T) {
+	source := fakeTemplatesRepo(t)
+	tags, err := GitCLI{}.RemoteTags(context.Background(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{fixtureLaterTag, fixturePinnedTag}
+	if len(tags) != len(want) {
+		t.Fatalf("tags = %v, want %v", tags, want)
+	}
+	for i := range want {
+		if tags[i] != want[i] {
+			t.Fatalf("tags = %v, want %v (newest first)", tags, want)
+		}
+	}
+	if latest := LatestRef(tags); latest != fixtureLaterTag {
+		t.Errorf("LatestRef = %q, want %q", latest, fixtureLaterTag)
+	}
+	// An annotated tag appears twice in ls-remote, once peeled. Reporting v1.0.0
+	// twice in a menu would read as a mistake in the tool.
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		if seen[tag] {
+			t.Errorf("%q listed twice: peeled refs must be dropped", tag)
+		}
+		seen[tag] = true
+	}
 }

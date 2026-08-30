@@ -62,19 +62,27 @@ Flags:
                         you are saying where the templates already are.
 
 THE TEMPLATES
-  This binary declares which tag of lerian-terraform-foundation it drives. The chart
-  mapping compiled into the binary and the helm_values expressions in the HCL at
-  that tag are two halves of one contract, so a checkout this command creates is
-  pinned to the declared tag, never to a branch. Every run says which tag the
-  checkout is at and which one the binary expects.
+  Which release of lerian-terraform-foundation to run is YOURS to choose: pass the
+  tag with --templates-ref. There is no default, and the binary pins nothing — the
+  CLI and the templates are separate repositories on separate version lines, and a
+  tag compiled in here would mean waiting for a CLI build to use a templates
+  release, and the reverse.
 
+  What the binary does declare is a floor: the oldest templates its chart mapping
+  understands. Below it the same product comes out one shape in shared mode and
+  another in dedicated, so below it is refused. Above it, anything you name is
+  yours to run, and every command prints the tag the checkout is on.
+
+  --templates-ref <tag> The templates tag to clone or sync to, e.g. v1.5.0.
+                        Required by --clone and by --sync. Run either without it
+                        and the error lists the tags that exist. v1.6.0 is the
+                        oldest with the AWS layout this tool drives.
   --clone               Clone the templates into the managed checkout, which lives
                         at ~/lerian/lerian-terraform-foundation. Not hidden, and
                         named after the repository, because it is an ordinary git
                         checkout you are meant to be able to open and use by hand.
   --no-clone            Fail instead of cloning when no checkout is found.
-  --sync                Move the managed checkout to the tag this binary declares,
-                        then exit.
+  --sync                Move the managed checkout to --templates-ref, then exit.
                         Your environments.conf and every envs/*.tfvars survive it:
                         they are gitignored, and a checkout does not touch
                         untracked or ignored files. That is why the path carries no
@@ -93,6 +101,8 @@ THE TEMPLATES
 
 Examples:
   lerian-infra init --env dev
+  lerian-infra init --env dev --clone --templates-ref v1.6.0
+  lerian-infra init --env dev --sync --templates-ref v1.7.0
   lerian-infra init --env dev --profile lerian-dev --region us-east-2 \
       --targets infra-base,midaz --api-cidr auto
 `
@@ -102,6 +112,9 @@ type initOptions struct {
 	// templatesDir relocates the managed checkout, for a read-only home, a network
 	// home, or an operator who keeps tooling under XDG.
 	templatesDir string
+	// templatesRef is the tag of lerian-terraform-foundation to clone or sync to.
+	// There is no default: see TemplatesMinRef.
+	templatesRef string
 	environment  string
 	profile      string
 	region       string
@@ -149,6 +162,8 @@ func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	flags.StringVar(&opts.repo, "repo", "", "path to the checkout")
 	flags.StringVar(&opts.templatesDir, "templates-dir", "",
 		"where the managed checkout lives (default ~/lerian/lerian-terraform-foundation)")
+	flags.StringVar(&opts.templatesRef, "templates-ref", "",
+		"templates tag to clone or sync to, e.g. v1.6.0 (required by --clone and --sync)")
 	flags.StringVar(&opts.environment, "env", "", "dev, stg or prd")
 	flags.StringVar(&opts.profile, "profile", "", "AWS profile")
 	flags.StringVar(&opts.region, "region", "", "AWS region")
@@ -160,11 +175,11 @@ func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	flags.BoolVar(&opts.dryRun, "dry-run", false, "show what would be written")
 	flags.BoolVar(&opts.autoApprove, "auto-approve", false, "skip the confirmation")
 	flags.BoolVar(&opts.clone, "clone", false,
-		"clone the templates matching this binary into the managed checkout")
+		"clone the templates into the managed checkout (needs --templates-ref)")
 	flags.BoolVar(&opts.noClone, "no-clone", false,
 		"fail instead of cloning when no checkout is found")
 	flags.BoolVar(&opts.sync, "sync", false,
-		"move the managed checkout to the tag matching this binary, then exit")
+		"move the managed checkout to --templates-ref, then exit")
 	opts.set = tokenValues{}
 	flags.Var(opts.set, "set", "fill a template placeholder: --set '<TOKEN>=value' (repeatable)")
 
@@ -201,7 +216,7 @@ func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		}
 		source = sourceManaged
 	}
-	warnVersionMismatch(ctx, stdout, layout, source)
+	warnTemplatesBelowMin(ctx, stdout, layout, source)
 
 	plan, err := buildInitPlan(ctx, layout, opts, ask)
 	if err != nil {

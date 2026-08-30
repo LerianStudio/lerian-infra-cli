@@ -334,7 +334,13 @@ foundation passa a linkar o `curl | sh` do repo do CLI em vez de carregar o coma
 mudou. O plano `docs/plans/2026-08-26-lerian-infra-v1-6-0-release.md` já foi para o CLI
 na Task 1.1.1; os outros dois planos são da foundation e ficam. `.gitignore` perde
 `/bin/` e `dist/`. O `.releaserc` fica — a foundation continua lançando tags de
-templates.)*
+templates.*
+
+*Achados da Fase 2 para esta fase: o README da foundation diz em `README.md:96` "The
+binary and the templates ship from the same tag" e em `:102` "clones the matching
+tag" — ambos falsos agora que o CLI declara o ref; reescrever para "o CLI declara qual
+tag dirige". E `.gitignore:77` tem `/docs/`, que é por que nenhum plano foi commitado
+na foundation; decidir se `docs/` passa a ser tracked.)*
 
 ---
 

@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -182,10 +183,13 @@ func (c *CLI) Init(ctx context.Context, unit Unit, opts InitOptions) error {
 	}
 	// The bootstrap stack's own precondition asserts terraform.workspace ==
 	// var.environment, so the workspace is selected before anything else runs.
-	if err := client.WorkspaceSelect(ctx, opts.Workspace); err != nil {
-		if err := client.WorkspaceNew(ctx, opts.Workspace); err != nil {
+	if selectErr := client.WorkspaceSelect(ctx, opts.Workspace); selectErr != nil {
+		// Both errors are kept. Select failing for a reason other than "no such
+		// workspace" — a backend authorization failure, say — used to be reported
+		// only as the create failure, and the real cause was gone.
+		if createErr := client.WorkspaceNew(ctx, opts.Workspace); createErr != nil {
 			return fmt.Errorf("infra: cannot select or create workspace %q in %s: %w",
-				opts.Workspace, unit.Name, err)
+				opts.Workspace, unit.Name, errors.Join(selectErr, createErr))
 		}
 	}
 	return nil

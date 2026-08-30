@@ -36,6 +36,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // EgressIPPlaceholders are the tokens the committed templates leave for the
@@ -271,7 +272,10 @@ type HTTPDoer interface {
 // "1.2.3.4/32/32" and a plan error far from its cause.
 func DetectEgressIP(ctx context.Context, client HTTPDoer) (string, error) {
 	if client == nil {
-		client = &http.Client{}
+		// A timeout on the fallback, because this is the library surface: the CLI
+		// passes a 10s context and its own client, but a caller with
+		// context.Background() and nil would otherwise block until the OS gave up.
+		client = &http.Client{Timeout: 10 * time.Second}
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, egressIPService, nil)
 	if err != nil {
@@ -711,7 +715,12 @@ func retargetRegion(content []byte, region string) ([]byte, string) {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
-		lines[i] = strings.ReplaceAll(line, from, region)
+		// Only the code half is rewritten. Replacing across the whole line also
+		// edited end-of-line notes such as
+		//   instance_type = "db.r6g.large" # ~USD 300/month, us-east-1 on-demand
+		// which is exactly the prose this function promises to leave alone.
+		code := stripComment(line)
+		lines[i] = strings.ReplaceAll(code, from, region) + line[len(code):]
 	}
 	return joinLines(lines), from
 }
@@ -812,11 +821,41 @@ func confine(layout Layout, path string) error {
 	if err != nil {
 		return fmt.Errorf("infra: cannot resolve %s: %w", path, err)
 	}
+	// Symlinks are resolved before the comparison: filepath.Abs cleans ".." but
+	// follows nothing, so a symlinked directory under examples/aws passed the prefix
+	// check while the write landed outside the checkout. EvalSymlinks fails on a
+	// path that does not exist yet, which is the ordinary case for a tfvars about to
+	// be written, so the deepest existing ancestor is what gets resolved.
+	if resolved, err := evalExistingPrefix(target); err == nil {
+		target = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
 	if target != root && !strings.HasPrefix(target, root+string(filepath.Separator)) {
 		return fmt.Errorf("infra: refusing to write outside %s\n  path: %s",
 			layout.RepoRel(root), target)
 	}
 	return nil
+}
+
+// evalExistingPrefix resolves symlinks on the deepest ancestor of path that exists,
+// then re-appends the part that does not, so a file about to be created is still
+// checked against real directories.
+func evalExistingPrefix(path string) (string, error) {
+	missing := ""
+	for current := path; ; {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			return filepath.Join(resolved, missing), nil
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", err
+		}
+		missing = filepath.Join(filepath.Base(current), missing)
+		current = parent
+	}
 }
 
 // writeAtomic writes through a temporary file in the same directory and renames it,

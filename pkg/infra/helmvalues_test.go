@@ -324,3 +324,52 @@ func TestCollectHelmValuesIgnoresANullOutput(t *testing.T) {
 		t.Errorf("SecretValues = %v, want nil", document.SecretValues)
 	}
 }
+
+// Start registers the DECLARED units. In shared mode the read is redirected to the
+// tier root, and failure updates used to be addressed to that tier name — a row the
+// reporter never received. The declared row stayed running and the operator saw no
+// failure at all.
+func TestSharedModeFailuresLandOnTheDeclaredRow(t *testing.T) {
+	layout, product := sharedCheckout(t, SharedMode)
+
+	terraform := newFakeTerraform()
+	terraform.failures["output products/shared-resources/valkey"] = errors.New("no state found")
+
+	progress := &recordingProgress{}
+	_, err := CollectHelmValuesFrom(context.Background(), terraform, layout,
+		[]Unit{product}, Backend{}, "dev", progress)
+	if err == nil {
+		t.Fatal("expected the output failure to surface")
+	}
+	if !progress.sawStatus(product.Name, StatusFail) {
+		t.Errorf("no failure on the declared row %q; updates were %v", product.Name, progress.updates)
+	}
+	// The tier name is never a registered row, so it must not be addressed.
+	tier := SharedUnitFor(layout, product)
+	if progress.sawStatus(tier.Name, StatusFail) {
+		t.Errorf("failure addressed %q, which Start never registered", tier.Name)
+	}
+}
+
+// In shared mode the tier owns the datastore, and its helm_secret_values — if it
+// ever grows one — carries the tier's shape, not this product's chart. Copying it
+// into the product's SecretValues adds keys the chart does not read.
+func TestSharedModeDoesNotAdoptTheTiersSecretValues(t *testing.T) {
+	layout, product := sharedCheckout(t, SharedMode)
+
+	terraform := newFakeTerraform()
+	terraform.outputs["products/shared-resources/valkey"] = map[string]json.RawMessage{
+		"endpoint":           raw("master.shared-dev-valkey.cache.amazonaws.com"),
+		"port":               raw(6379),
+		"helm_secret_values": raw(map[string]string{"TIER_ONLY_KEY": "leaked"}),
+	}
+
+	document, err := CollectHelmValuesFrom(context.Background(), terraform, layout,
+		[]Unit{product}, Backend{}, "dev", Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.SecretValues != nil {
+		t.Errorf("the tier's secret values must not reach the product document: %v", document.SecretValues)
+	}
+}

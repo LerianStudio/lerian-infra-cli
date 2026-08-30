@@ -46,7 +46,7 @@ func Discover(layout Layout) (Catalog, error) {
 	}
 
 	for _, product := range products {
-		if !product.IsDir() || strings.HasPrefix(product.Name(), ".") {
+		if !product.IsDir() || isNotADeployable(product.Name()) {
 			continue
 		}
 		services, err := os.ReadDir(filepath.Join(root, product.Name()))
@@ -56,7 +56,7 @@ func Discover(layout Layout) (Catalog, error) {
 		}
 		var found []string
 		for _, service := range services {
-			if !service.IsDir() || strings.HasPrefix(service.Name(), ".") {
+			if !service.IsDir() || isNotADeployable(service.Name()) {
 				continue
 			}
 			main := filepath.Join(root, product.Name(), service.Name(), "main.tf")
@@ -190,9 +190,17 @@ func resolveComposite(layout Layout, catalog Catalog, target string) ([]Stage, e
 			continue
 		}
 		if part == "all" {
+			// Built from the parts, not by string replacement: "midaz,all" left the
+			// "all" in place and suggested the command that had just been refused.
+			var rest []string
+			for _, other := range strings.Split(target, ",") {
+				if other = strings.TrimSpace(other); other != "" && other != "all" {
+					rest = append(rest, other)
+				}
+			}
 			return nil, fmt.Errorf("infra: 'all' cannot be combined with another target\n"+
 				"'all' already includes everything. Use it on its own, or list the parts:\n"+
-				"  --target %s", strings.ReplaceAll(target, "all,", ""))
+				"  --target %s", strings.Join(rest, ","))
 		}
 		parts = append(parts, part)
 	}
@@ -224,11 +232,18 @@ func resolveComposite(layout Layout, catalog Catalog, target string) ([]Stage, e
 	// "all" groups a product's services into one stage. Keep those verbatim, after
 	// the canonical stages they cannot precede.
 	ordered := make([]Stage, 0, len(wanted))
+	// seen tracks units already scheduled, so a verbatim stage cannot re-run a root
+	// a canonical stage has already taken.
+	seen := map[string]bool{}
 	for _, stage := range everything {
-		if wanted[stage.Name] {
-			ordered = append(ordered, stage)
-			delete(wanted, stage.Name)
+		if !wanted[stage.Name] {
+			continue
 		}
+		delete(wanted, stage.Name)
+		for _, unit := range stage.Units {
+			seen[unit.Name] = true
+		}
+		ordered = append(ordered, stage)
 	}
 	if len(wanted) > 0 {
 		for _, part := range parts {
@@ -237,14 +252,45 @@ func resolveComposite(layout Layout, catalog Catalog, target string) ([]Stage, e
 				return nil, err
 			}
 			for _, stage := range stages {
-				if wanted[stage.Name] {
-					ordered = append(ordered, stage)
-					delete(wanted, stage.Name)
+				if !wanted[stage.Name] {
+					continue
 				}
+				delete(wanted, stage.Name)
+				// A unit already covered by an accepted stage is dropped rather than
+				// run twice: "--target midaz,midaz/postgres" produced the canonical
+				// midaz stage AND the verbatim midaz/postgres one, so the same root
+				// applied twice and Progress.Start received a duplicate name, which
+				// makes every later Update ambiguous for the checklist consumers.
+				var fresh []Unit
+				for _, unit := range stage.Units {
+					if seen[unit.Name] {
+						continue
+					}
+					seen[unit.Name] = true
+					fresh = append(fresh, unit)
+				}
+				if len(fresh) == 0 {
+					continue
+				}
+				stage.Units = fresh
+				ordered = append(ordered, stage)
 			}
 		}
 	}
 	return ordered, nil
+}
+
+// isNotADeployable reports the directory names Discover must never treat as a
+// product or a service.
+//
+// Dot-prefixed entries are Terraform's own working directories. An underscore
+// prefix is this repository's convention for shared Terraform modules —
+// examples/aws/_modules — and those are meant to be called, never applied as a
+// root. Excluding them only by the absence of main.tf worked by accident: a shared
+// module normally does have one, and the day it appears "_modules" would become a
+// product and "--target all" would apply it.
+func isNotADeployable(name string) bool {
+	return strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
 }
 
 // ForDestroy walks the dependency graph backwards and takes bootstrap out of it.

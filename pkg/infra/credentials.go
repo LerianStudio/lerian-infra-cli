@@ -66,11 +66,17 @@ func ResolveCredentials(ctx context.Context, profile string) (Credentials, error
 
 	command := exec.CommandContext(ctx, "aws", "configure", "export-credentials",
 		"--profile", profile, "--format", "env-no-export")
-	output, err := command.CombinedOutput()
+	// stdout and stderr are kept apart, and only stdout is parsed. Merging them had
+	// two consequences: a stderr line shaped like KEY=VALUE was read as a credential,
+	// and a non-zero exit after the CLI had already printed credentials put
+	// AWS_SECRET_ACCESS_KEY into the error text, which the caller then prints.
+	var stderr strings.Builder
+	command.Stderr = &stderr
+	output, err := command.Output()
 	if err != nil {
 		return Credentials{}, fmt.Errorf("infra: cannot resolve credentials for profile %q: %w\n%s\n\n"+
 			"An expired SSO session is the usual cause:\n  aws sso login --profile %s",
-			profile, err, strings.TrimSpace(string(output)), profile)
+			profile, err, strings.TrimSpace(stderr.String()), profile)
 	}
 
 	var credentials Credentials

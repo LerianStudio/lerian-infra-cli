@@ -114,8 +114,18 @@ func CollectHelmValuesFrom(
 		product, engine := ProductOf(declared), EngineOf(declared)
 		if layout.Root != "" && product != "" && product != sharedResources &&
 			HasChartMapper(product, engine) {
+			// The error is reported, not dropped: a tfvars that cannot be read
+			// silently disabled the redirect, and the run then read a product root
+			// that creates nothing in shared mode. The operator saw a Terraform state
+			// error instead of the real cause.
 			mode, err := readDatastoreMode(declared, env)
-			if err == nil && mode == SharedMode {
+			if err != nil {
+				report.Update(declared.Name, StatusFail, err.Error(),
+					"Fix the tfvars, or pass --repo at the checkout that holds it.")
+				report.Finish(true)
+				return Document{}, err
+			}
+			if mode == SharedMode {
 				unit = SharedUnitFor(layout, declared)
 				mapped = true
 			}
@@ -123,8 +133,12 @@ func CollectHelmValuesFrom(
 
 		// Read-only, but still an init: the state lives in S3 and the working
 		// directory may hold another environment's backend.
+		// declared.Name, not unit.Name: Start registered the DECLARED units, and in
+		// shared mode unit is the tier root, a row the reporter never received. Those
+		// updates addressed nothing, so the declared row stayed running and the
+		// operator saw no failure at all. The tier's name belongs in the message.
 		if err := terraform.Init(ctx, unit, initOptionsFor(unit, backend, env)); err != nil {
-			report.Update(unit.Name, StatusFail, err.Error(),
+			report.Update(declared.Name, StatusFail, describeUnitError(unit, declared, err),
 				"Confirm this stack has been applied in this environment.")
 			report.Finish(true)
 			return Document{}, err
@@ -132,7 +146,7 @@ func CollectHelmValuesFrom(
 
 		outputs, err := terraform.Output(ctx, unit)
 		if err != nil {
-			report.Update(unit.Name, StatusFail, err.Error(),
+			report.Update(declared.Name, StatusFail, describeUnitError(unit, declared, err),
 				"Confirm this stack has been applied in this environment.")
 			report.Finish(true)
 			return Document{}, err
@@ -180,18 +194,25 @@ func CollectHelmValuesFrom(
 			return Document{}, wrapped
 		}
 
-		secretValues, hasSecrets, err := decodeObject(unit, helmSecretValuesOutput, outputs)
-		if err != nil {
-			report.Update(unit.Name, StatusFail, err.Error(), "")
-			report.Finish(true)
-			return Document{}, err
-		}
-		if hasSecrets {
-			if err := mergeInto(secrets, secretValues, nil); err != nil {
-				wrapped := conflictError(unit, helmSecretValuesOutput, err)
-				report.Update(unit.Name, StatusFail, wrapped.Error(), "")
+		// Skipped when mapped, for the same reason helm_values is built here rather
+		// than read: in shared mode `unit` is the TIER, whose helm_secret_values — if
+		// it ever grows one — is the tier's own shape and knows nothing of this
+		// product's chart. Copying it into the product's SecretValues would add keys
+		// the chart does not read, or collide with a sibling service.
+		if !mapped {
+			secretValues, hasSecrets, err := decodeObject(unit, helmSecretValuesOutput, outputs)
+			if err != nil {
+				report.Update(declared.Name, StatusFail, err.Error(), "")
 				report.Finish(true)
-				return Document{}, wrapped
+				return Document{}, err
+			}
+			if hasSecrets {
+				if err := mergeInto(secrets, secretValues, nil); err != nil {
+					wrapped := conflictError(unit, helmSecretValuesOutput, err)
+					report.Update(declared.Name, StatusFail, wrapped.Error(), "")
+					report.Finish(true)
+					return Document{}, wrapped
+				}
 			}
 		}
 
@@ -209,6 +230,15 @@ func CollectHelmValuesFrom(
 	}
 	report.Finish(false)
 	return document, nil
+}
+
+// describeUnitError names the root that actually failed when it is not the one the
+// caller asked for, which is the shared-mode case.
+func describeUnitError(unit, declared Unit, err error) string {
+	if unit.Name == declared.Name {
+		return err.Error()
+	}
+	return fmt.Sprintf("%s (resolved to %s): %s", declared.Name, unit.Name, err)
 }
 
 func conflictError(unit Unit, output string, err error) error {

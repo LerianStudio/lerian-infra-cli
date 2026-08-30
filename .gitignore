@@ -35,3 +35,6 @@ go.work.sum
 # artifacts published to GitHub, not repository content.
 /bin/
 dist/
+
+# Working documents: plans and notes, local only.
+/docs/

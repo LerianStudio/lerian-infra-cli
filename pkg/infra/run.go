@@ -482,7 +482,18 @@ func pendingCreator(earlier []StageResult) string {
 // the failure message is true for a plan (nothing happened) and for an apply or a
 // destroy that got part of the way (something did, and it is named).
 func describeCompletedStages(earlier []StageResult, action Action) string {
-	if action == ActionPlan || len(earlier) == 0 {
+	// The verb follows the action even when the answer is "nothing". A destroy that
+	// fails while planning its first stage has destroyed nothing, and saying
+	// "nothing was applied" there describes an operation nobody asked for.
+	verb := "applied"
+	if action == ActionDestroy {
+		verb = "destroyed"
+	}
+	nothing := "nothing was " + verb
+
+	if action == ActionPlan {
+		// A plan carries out neither, and "applied" is the word its own failure
+		// message has always used.
 		return "nothing was applied"
 	}
 	var done []string
@@ -492,11 +503,7 @@ func describeCompletedStages(earlier []StageResult, action Action) string {
 		}
 	}
 	if len(done) == 0 {
-		return "nothing was applied"
-	}
-	verb := "applied"
-	if action == ActionDestroy {
-		verb = "destroyed"
+		return nothing
 	}
 	return fmt.Sprintf("%s was already %s", strings.Join(done, ", "), verb)
 }

@@ -194,9 +194,16 @@ func TestInitDryRunWritesNothing(t *testing.T) {
 	}
 }
 
-// A declared account that the credentials do not reach must stop here, not at
-// apply time: writing it would produce a config whose own guard rejects every run.
-func TestInitRejectsAccountMismatch(t *testing.T) {
+// A malformed --account is rejected before anything is written: a config carrying
+// "12345" produces a guard that refuses every later run, and the operator finds out
+// at apply time instead of now.
+//
+// This is the FORMAT check, not the mismatch check. A real mismatch — a well-formed
+// account the credentials do not reach — needs a caller identity to compare against,
+// and runInit resolves that through the live AWS CLI. It is covered where it can be
+// driven deterministically, with a stub identity:
+// pkg/infra TestVerifyAccountRefusesTheWrongAccount.
+func TestInitRejectsAMalformedAccountID(t *testing.T) {
 	root := initCheckout(t)
 	var out, errOut bytes.Buffer
 

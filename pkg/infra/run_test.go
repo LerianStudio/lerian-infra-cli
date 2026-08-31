@@ -632,6 +632,21 @@ func TestPlanFailureAfterAnApplySaysWhatWasAlreadyDone(t *testing.T) {
 		t.Errorf("the message must name what was applied:\n%v", err)
 	}
 
+	// A destroy that fails while planning its FIRST stage has destroyed nothing, and
+	// the sentence has to say that rather than describing an apply.
+	destroying := newFakeTerraform()
+	destroying.failures["plan products/midaz/postgres"] = errors.New("no state found")
+	destroyer := newTestRunner(t, destroying, &recordingProgress{}, 1)
+	_, destroyErr := destroyer.Execute(context.Background(), []Stage{
+		{Name: "midaz", Units: units("products/midaz/postgres")},
+	}, ActionDestroy, nil)
+	if destroyErr == nil {
+		t.Fatal("the failing plan must fail the destroy")
+	}
+	if !strings.Contains(destroyErr.Error(), "nothing was destroyed") {
+		t.Errorf("a destroy destroys, applies nothing:\n%v", destroyErr)
+	}
+
 	// A plan run applies nothing by definition, so there the claim is true.
 	failing := newFakeTerraform()
 	failing.failures["plan products/midaz/postgres"] = errors.New("invalid subnet id")

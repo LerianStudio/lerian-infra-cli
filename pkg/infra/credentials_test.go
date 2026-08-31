@@ -171,8 +171,12 @@ func TestResolveCredentialsNeverPutsTheSecretInTheError(t *testing.T) {
 	if err == nil {
 		t.Fatal("a non-zero exit is a failure even when something was printed")
 	}
+	// The error is NOT interpolated. If this assertion fails, err holds the secret,
+	// and printing it would write the very value under test into the CI log — the
+	// leak this test exists to catch, performed by the test.
 	if strings.Contains(err.Error(), "topsecretvalue") {
-		t.Errorf("the secret must never reach the error text:\n%v", err)
+		t.Error("the secret reached the error text; the error is withheld here on " +
+			"purpose, because printing it would leak the value into the log")
 	}
 	// The stderr the AWS CLI wrote is what diagnoses it, so that has to be there.
 	if !strings.Contains(err.Error(), "SSO session has expired") {

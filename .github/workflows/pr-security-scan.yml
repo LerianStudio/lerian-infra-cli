@@ -1,0 +1,20 @@
+name: "PR Security Scan"
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+
+jobs:
+  security-scan:
+    uses: LerianStudio/github-actions-shared-workflows/.github/workflows/pr-security-scan.yml@v1.62.0
+    with:
+      runner_type: "blacksmith-4vcpu-ubuntu-2404"
+      # No Dockerfile here: the artifact is a binary, not an image.
+      enable_docker_scan: false
+    secrets: inherit

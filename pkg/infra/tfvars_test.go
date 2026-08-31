@@ -1,0 +1,148 @@
+package infra
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func unitWithEnvs(t *testing.T, files map[string]string) Unit {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "envs"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	for name, contents := range files {
+		if err := os.WriteFile(filepath.Join(dir, "envs", name), []byte(contents), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	return Unit{Dir: dir, Name: "products/midaz/postgres"}
+}
+
+func TestCheckReadinessAcceptsACompleteVarFile(t *testing.T) {
+	unit := unitWithEnvs(t, map[string]string{
+		"dev.tfvars": "environment = \"dev\"\ninstance_class = \"db.t4g.medium\"\n",
+	})
+
+	report := CheckReadiness([]Unit{unit}, "dev")
+	if len(report) != 1 {
+		t.Fatalf("got %d entries, want 1", len(report))
+	}
+	if !report[0].Ready() {
+		t.Errorf("not ready: %s", report[0].Problem)
+	}
+}
+
+func TestCheckReadinessPointsAtTheTemplateWhenTheVarFileIsMissing(t *testing.T) {
+	unit := unitWithEnvs(t, map[string]string{
+		"dev.tfvars-example": "environment = \"dev\"\n",
+	})
+
+	report := CheckReadiness([]Unit{unit}, "dev")
+	if report[0].Ready() {
+		t.Fatal("a missing dev.tfvars was reported as ready")
+	}
+	if !strings.Contains(report[0].Remediation, "cp ") {
+		t.Errorf("remediation = %q, want the copy command", report[0].Remediation)
+	}
+}
+
+func TestCheckReadinessSaysSoWhenThereIsNoTemplateEither(t *testing.T) {
+	unit := unitWithEnvs(t, map[string]string{"stg.tfvars": "environment = \"stg\"\n"})
+
+	report := CheckReadiness([]Unit{unit}, "prd")
+	if report[0].Ready() {
+		t.Fatal("reported ready with no prd.tfvars at all")
+	}
+	if !strings.Contains(report[0].Problem, "no prd.tfvars-example") {
+		t.Errorf("problem = %q, want it to say the stack may not support prd", report[0].Problem)
+	}
+}
+
+func TestCheckReadinessFindsUnresolvedPlaceholders(t *testing.T) {
+	unit := unitWithEnvs(t, map[string]string{
+		"dev.tfvars": `
+# The comment below is prose and must not count: templates legitimately write
+# things like <that address> in their explanations.
+environment    = "dev"
+vpc_id         = "<PUT-YOUR-VPC-ID>"
+master_password_arn = "<CHANGE-ME>"
+instance_class = "db.t4g.medium"
+`,
+	})
+
+	report := CheckReadiness([]Unit{unit}, "dev")
+	if report[0].Ready() {
+		t.Fatal("a file full of placeholders was reported as ready")
+	}
+	if !strings.Contains(report[0].Problem, "2 line(s)") {
+		t.Errorf("problem = %q, want exactly the two non-comment placeholder lines", report[0].Problem)
+	}
+	// Naming the lines is what turns the report into something to act on.
+	if !strings.Contains(report[0].Remediation, "vpc_id") {
+		t.Errorf("remediation = %q, want the offending lines", report[0].Remediation)
+	}
+}
+
+func TestCheckReadinessReportsEveryUnitRatherThanTheFirstProblem(t *testing.T) {
+	ready := unitWithEnvs(t, map[string]string{"dev.tfvars": "environment = \"dev\"\n"})
+	missing := unitWithEnvs(t, map[string]string{})
+	missing.Name = "products/midaz/valkey"
+
+	report := CheckReadiness([]Unit{missing, ready}, "dev")
+	if len(report) != 2 {
+		t.Fatalf("got %d entries, want one per unit", len(report))
+	}
+	if report[0].Ready() || !report[1].Ready() {
+		t.Errorf("report = %+v, want the order preserved and only the first not ready", report)
+	}
+}
+
+// HCL accepts // as well as #, and a comment can trail a value. Matching the raw
+// line reported a placeholder that lived inside a note, and CheckReadiness then
+// refused to plan a file that was complete.
+func TestPlaceholdersIgnoreCommentedText(t *testing.T) {
+	for _, test := range []struct {
+		name, line string
+		wantFound  bool
+	}{
+		{"real placeholder", `vpc_id = "<PUT-YOUR-VPC-ID>"`, true},
+		{"hash comment", `# copy the id from <PUT-YOUR-VPC-ID>`, false},
+		{"slash comment", `// copy the id from <PUT-YOUR-VPC-ID>`, false},
+		{"trailing hash", `vpc_id = "vpc-0a1b" # was <PUT-YOUR-VPC-ID>`, false},
+		{"trailing slash", `vpc_id = "vpc-0a1b" // was <PUT-YOUR-VPC-ID>`, false},
+		// A # inside a quoted string is not a comment.
+		{"hash in a string", `bucket = "<PUT-YOUR-BUCKET#1>"`, true},
+	} {
+		code := stripComment(test.line)
+		got := placeholderPattern.MatchString(code)
+		if got != test.wantFound {
+			t.Errorf("%s: %q -> found=%v, want %v (code half %q)", test.name, test.line, got, test.wantFound, code)
+		}
+	}
+}
+
+// HCL block comments cross lines, so a line-at-a-time check cannot know it is
+// inside one. A placeholder in a /* ... */ block is prose, and reporting it made
+// CheckReadiness refuse a file that was complete.
+func TestPlaceholdersIgnoreBlockComments(t *testing.T) {
+	lines := []string{
+		`/* the old value was <PUT-YOUR-VPC-ID>`,
+		`   and the region was <PUT-YOUR-REGION> */`,
+		`vpc_id = "<PUT-YOUR-VPC-ID>"`,
+		`/* inline */ subnet = "<PUT-YOUR-SUBNET>"`,
+		`name = "block /* not a comment */ inside a string"`,
+	}
+	want := []bool{false, false, true, true, false}
+
+	var scanner commentScanner
+	for i, line := range lines {
+		code := scanner.code(line)
+		got := placeholderPattern.MatchString(code)
+		if got != want[i] {
+			t.Errorf("line %d %q -> found=%v, want %v (code %q)", i+1, line, got, want[i], code)
+		}
+	}
+}

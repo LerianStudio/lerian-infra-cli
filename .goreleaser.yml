@@ -1,0 +1,102 @@
+version: 2
+
+# The artifact is the CLI, so the archives are named after the binary and not after
+# the repository: "lerian-infra_1.0.0_Darwin_arm64.tar.gz", not
+# "lerian-infra-cli_...". The name people type is the name they should download.
+project_name: lerian-infra
+
+# Release configuration for the lerian-infra binary.
+#
+# The archives carry the BINARY ONLY, not the templates. Those live in
+# LerianStudio/lerian-terraform-foundation, on their own version line, and the
+# operator picks which release to run:
+# `lerian-infra init --clone --templates-ref <tag>`. Shipping a copy of examples/
+# inside the tarball would give them a second, un-updatable tree with no git history
+# to pull from — worse than the clone in every way that matters.
+
+before:
+  hooks:
+    # Verify only. `go mod tidy` here would let a release quietly rewrite go.mod,
+    # and a release is the wrong moment to discover the module graph was not what
+    # the tested tree said it was.
+    - go mod verify
+
+builds:
+  - id: lerian-infra
+    binary: lerian-infra
+    main: ./cmd/lerian-infra
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Windows on arm64 has no realistic audience for an infrastructure CLI, and
+      # every combination shipped is a combination someone has to be able to
+      # support.
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      # {{.Tag}}, NOT {{.Version}}. This is the string `lerian-infra --version`
+      # prints and the one an operator quotes in a bug report, so it has to be the
+      # tag as cut. {{.Version}} strips the leading "v" (1.0.0), which would force a
+      # "v"+version concatenation here and break the moment tagFormat changes.
+      # Prerelease tags (v1.0.0-develop.3) round-trip intact this way.
+      #
+      # The target is main.version: the variable lives in package main at
+      # cmd/lerian-infra/main.go, not in an internal/version package.
+      - -X main.version={{.Tag}}
+    flags:
+      - -trimpath
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # No CHANGELOG.md: this repository's .releaserc runs no changelog plugin, and the
+    # release notes live on the GitHub release the archive is attached to. Listing a
+    # file that is not there fails the build; shipping an empty one misleads.
+    files:
+      - README.md
+      - LICENSE
+      - SECURITY.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+# Disabled because semantic-release already writes the release notes.
+#
+# The release job in .github/workflows/release.yml creates the GitHub release and
+# its body; go-release.yml then runs goreleaser in append mode, which only uploads
+# artifacts. With a changelog enabled it would append a SECOND generated changelog
+# underneath the one semantic-release just wrote.
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: LerianStudio
+    name: lerian-infra-cli
+  draft: false
+  prerelease: auto
+  # append, not replace: the release already exists — semantic-release created it,
+  # which is what triggered this run.
+  mode: append
+  skip_upload: false

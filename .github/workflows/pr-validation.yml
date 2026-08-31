@@ -1,0 +1,49 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [develop, main]
+    # `edited` matters: the title is one of the blocking checks, so a title fixed
+    # after a red run has to re-validate. Without it the failure stands until an
+    # unrelated push happens to re-trigger the workflow, and the pull request reads
+    # as broken long after it was corrected.
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  validate:
+    uses: LerianStudio/github-actions-shared-workflows/.github/workflows/pr-validation.yml@v1.62.0
+    with:
+      runner_type: "blacksmith-4vcpu-ubuntu-2404"
+      pr_title_types: |
+        feat
+        fix
+        docs
+        style
+        refactor
+        perf
+        test
+        chore
+        ci
+        build
+        revert
+      # NO scope allowlist. This repository carries no commitlint config of its own
+      # any more — that comment used to point at one — so this input was the only
+      # thing judging scopes, and it allowed exactly one: `release`. Every ordinary
+      # scope a reader would want was therefore a red check: fix(ci), feat(cli),
+      # docs(readme). The type list is the half that carries meaning for tooling;
+      # the scope is for humans, and a closed list of those needs a pull request to
+      # this file every time someone names a new part of the repository.
+      require_scope: false
+      enable_auto_labeler: false
+    # This is the one shared workflow of the four that declares its secrets, so it
+    # is the one that can be given exactly what it takes instead of everything this
+    # repository holds. Both are optional there; naming them keeps the grant narrow
+    # and makes an added requirement fail loudly instead of arriving silently.
+    secrets:
+      MANAGE_TOKEN: ${{ secrets.MANAGE_TOKEN }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

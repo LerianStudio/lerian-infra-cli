@@ -1,0 +1,29 @@
+name: Release
+
+# semantic-release: reads the conventional commits, decides the version, creates
+# the tag and the GitHub release. Publishing the binaries onto that release is
+# go-release.yml, which reacts to the release this one publishes.
+
+on:
+  push:
+    # release-candidate is here because .releaserc declares it as the rc prerelease
+    # line. A branch configured to publish and never triggered is worse than one that
+    # does not exist: the configuration says releases happen and none do.
+    branches: [main, release-candidate, develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    uses: LerianStudio/github-actions-shared-workflows/.github/workflows/release.yml@v1.62.0
+    with:
+      runner_type: "blacksmith-4vcpu-ubuntu-2404"
+    secrets: inherit

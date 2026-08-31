@@ -609,3 +609,63 @@ func TestAPICIDRTakesABareIPv4Address(t *testing.T) {
 		}
 	}
 }
+
+// init reaches AWS on every path — it asks who the operator is, or lists the
+// profiles it would ask about — so a missing AWS CLI is reported as itself, not as
+// the credential error it used to surface as.
+func TestInitWithoutTheAWSCLIExplainsTheDependency(t *testing.T) {
+	root := fakeCheckout(t, "", "")
+	t.Setenv("PATH", t.TempDir())
+
+	_, stderr, err := runCLI(t, "init", "--repo", root, "--env", "dev",
+		"--profile", "lerian-dev", "--region", "us-east-2")
+	if err == nil {
+		t.Fatal("expected a refusal naming the AWS CLI")
+	}
+	combined := err.Error() + stderr
+	for _, want := range []string{"AWS CLI", "aws configure sso", "aws configure --profile"} {
+		if !strings.Contains(combined, want) {
+			t.Errorf("the refusal must mention %q:\n%s", want, combined)
+		}
+	}
+}
+
+// --account is the documented way to write configuration on a machine that cannot
+// reach AWS, and that has to keep working when the reason it cannot reach AWS is
+// that the CLI is not installed at all.
+func TestInitWithAnExplicitAccountStillWritesWithoutTheAWSCLI(t *testing.T) {
+	root := initCheckout(t)
+	t.Setenv("PATH", t.TempDir())
+
+	_, stderr, err := runCLI(t, "init", "--repo", root, "--env", "dev",
+		"--profile", "lerian-dev", "--region", "us-east-2",
+		"--account", "123456789012", "--targets", "infra-base",
+		"--api-cidr", "203.0.113.7", "--auto-approve")
+	if err != nil {
+		t.Fatalf("--account should not need the AWS CLI: %v\n%s", err, stderr)
+	}
+	config, readErr := os.ReadFile(filepath.Join(root, "examples", "aws", "environments.conf"))
+	if readErr != nil {
+		t.Fatalf("the configuration was not written: %v", readErr)
+	}
+	if !strings.Contains(string(config), "123456789012") {
+		t.Errorf("the account passed explicitly is what gets written:\n%s", config)
+	}
+}
+
+// Without a region there is nothing to infer it from: ~/.aws/config is read by the
+// tool that is missing. The refusal has to say so rather than writing a tfvars with
+// an empty region.
+func TestInitWithoutTheAWSCLIStillDemandsARegion(t *testing.T) {
+	root := fakeCheckout(t, "", "")
+	t.Setenv("PATH", t.TempDir())
+
+	_, stderr, err := runCLI(t, "init", "--repo", root, "--env", "dev",
+		"--profile", "lerian-dev", "--account", "123456789012")
+	if err == nil {
+		t.Fatal("expected a refusal about the region")
+	}
+	if !strings.Contains(err.Error()+stderr, "--region") {
+		t.Errorf("the refusal must name --region:\n%v\n%s", err, stderr)
+	}
+}

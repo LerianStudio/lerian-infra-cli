@@ -41,7 +41,9 @@ decision is an error naming the flag, so a CI run never guesses.
 
 Flags:
   --env <name>          dev, stg or prd. Required.
-  --profile <name>      AWS profile. Empty means ambient credentials (CI, IRSA).
+  --profile <name>      AWS profile, from ~/.aws/config or ~/.aws/credentials.
+                        Empty means ambient credentials (CI, IRSA). See THE AWS
+                        CLI below.
   --region <name>       AWS region for this environment.
   --account <id>        Expected 12-digit account. Verified against the profile.
   --targets <list>      Comma-separated roots to materialise tfvars for,
@@ -60,6 +62,26 @@ Flags:
                         a clone — see --clone.
   --repo <path>         The checkout to configure. Using it turns the clone off:
                         you are saying where the templates already are.
+
+THE AWS CLI
+  It must be installed AND configured. This command resolves credentials and asks
+  STS who they are through it, so a machine without it is refused by name rather
+  than through a credential error.
+
+  Configure one profile per account you deploy into. dev, stg and prd are separate
+  AWS accounts, so that is normally three:
+
+    aws configure sso --profile lerian-dev    # IAM Identity Center
+    aws configure --profile lerian-dev        # access key and secret
+
+  Either works — nothing here assumes SSO; the AWS CLI reads whatever the profile
+  declares. In a terminal with no --profile, the profiles found in ~/.aws are listed
+  with the account each one currently resolves to, so an expired session or a typo
+  is visible before anything is written.
+
+  On a machine that cannot reach AWS at all, --account <id> writes the configuration
+  anyway; the account is then verified at apply time. --region is still required
+  there, because ~/.aws/config is read by the very tool that is missing.
 
 THE TEMPLATES
   Which release of lerian-terraform-foundation to run is YOURS to choose: pass the
@@ -591,6 +613,25 @@ func resolveCredentials(
 ) (profile, region string, caller infra.Caller, err error) {
 	profile = opts.profile
 	region = strings.TrimSpace(opts.region)
+
+	// Every path below this point either asks the AWS CLI who the operator is or
+	// lists the profiles it would ask about, so its absence is settled first and by
+	// name. The one exception is the same escape the identity failure already has:
+	// with --account stated, init writes the configuration without reaching AWS, and
+	// the guard checks the account at apply time instead.
+	if err := infra.RequireAWSCLI(); err != nil {
+		if opts.account == "" {
+			return "", "", caller, err
+		}
+		// The escape does not skip the region: it is written into every tfvars this
+		// command produces, and with no AWS CLI there is nothing to infer it from —
+		// not even ~/.aws/config, which the CLI is what reads.
+		if region == "" {
+			return "", "", caller, fmt.Errorf("no region given, and the AWS CLI is not " +
+				"installed to infer one\nPass --region (for example --region us-east-2).")
+		}
+		return profile, region, infra.Caller{}, nil
+	}
 
 	// With a profile already named, one lookup answers everything.
 	if profile != "" || !ask.interactive {

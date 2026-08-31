@@ -22,6 +22,7 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -49,6 +50,40 @@ func (c Credentials) Environment() map[string]string {
 		env["AWS_SESSION_TOKEN"] = c.SessionToken
 	}
 	return env
+}
+
+// ErrNoAWSCLI is returned when the AWS CLI is absent.
+//
+// It is checked early, by name, for the same reason ErrNoGit and
+// MinTerraformVersion are: without it the first AWS call fails as
+// `exec: "aws": executable file not found in $PATH`, buried inside a credentials
+// error, and the operator reads that as a broken profile rather than a missing tool.
+var ErrNoAWSCLI = errors.New("infra: the AWS CLI (aws) was not found in PATH")
+
+// RequireAWSCLI verifies the AWS CLI is installed before anything tries to use it.
+//
+// The CLI is not optional and not replaceable by a Go SDK here: it is the only
+// implementation that can complete an SSO refresh, and it is what resolves whichever
+// credential mechanism the operator's profile happens to use.
+//
+// The message names both ways a profile is configured. SSO is common at Lerian and
+// not universal — a profile with an access key and secret in ~/.aws/credentials is
+// just as valid, and telling somebody who uses one to run `aws configure sso` sends
+// them to fix something that is not broken.
+func RequireAWSCLI() error {
+	if _, err := exec.LookPath("aws"); err != nil {
+		return fmt.Errorf("%w\n"+
+			"Install the AWS CLI v2, then configure a profile for each account you\n"+
+			"deploy into — one per environment, since dev, stg and prd are separate\n"+
+			"accounts:\n"+
+			"  aws configure sso --profile lerian-dev      # IAM Identity Center\n"+
+			"  aws configure --profile lerian-dev          # access key and secret\n"+
+			"Either works. Ambient credentials in the environment work too: pass\n"+
+			"--profile '' with --account to say which account they reach.\n"+
+			"  https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html",
+			ErrNoAWSCLI)
+	}
+	return nil
 }
 
 // ResolveCredentials asks the AWS CLI to export the profile's current credentials,

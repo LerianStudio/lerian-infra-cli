@@ -42,6 +42,15 @@ FLAGS
 
   --templates-dir <path>  Where the managed checkout lives, when not the default.
 
+  --profile <name>        A profile from ~/.aws/config or ~/.aws/credentials, used
+                          for every AWS call of the run. The AWS CLI must be
+                          installed AND configured: it is what resolves the
+                          credentials, whether the profile uses IAM Identity Center
+                          (aws configure sso) or an access key and secret
+                          (aws configure). One profile per account, so normally one
+                          per environment. Pass --profile '' to use credentials
+                          already in the environment.
+
   --templates-ref <tag>   init only. The lerian-terraform-foundation tag to clone
                           or sync to. No default: which templates release to run is
                           yours to choose, and this binary pins nothing. It does

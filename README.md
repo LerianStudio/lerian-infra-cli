@@ -63,9 +63,30 @@ go install github.com/LerianStudio/lerian-infra-cli/cmd/lerian-infra@latest
 
 A binary built this way reports its version as `dev`.
 
-**Runtime dependencies:** `terraform` >= 1.10.0, `aws`, and `git` on your `PATH`. The
-CLI shells out to all three and checks for them before doing anything. `kubectl` is
-needed for the step after the cluster exists; the CLI never calls it.
+## Prerequisites
+
+`terraform` >= 1.10.0, the **AWS CLI v2**, and `git` on your `PATH`. The CLI shells
+out to all three and checks for each one before the first call that needs it, by name.
+`kubectl` is for the step after the cluster exists; this CLI never calls it.
+
+The AWS CLI has to be **configured**, not just installed — it is what resolves
+credentials and answers `sts get-caller-identity`, which every run is checked
+against. Configure one profile per account you deploy into: dev, stg and prd are
+separate AWS accounts, so that is normally three.
+
+```bash
+aws configure sso --profile lerian-dev   # IAM Identity Center
+aws configure --profile lerian-dev       # access key and secret
+```
+
+Either mechanism works — the CLI reads whatever your profile uses and never assumes
+SSO. Credentials already in the environment work too: pass `--profile ''` together
+with `--account` to state which account they reach.
+
+`init` lists the profiles it finds in `~/.aws` with the account each one currently
+resolves to, so a mistyped profile or an expired session is visible before anything
+is written. On a machine that cannot reach AWS at all, `--account <id>` writes the
+configuration anyway and the account is verified later, at apply time.
 
 ## The templates
 

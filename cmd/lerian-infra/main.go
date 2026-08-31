@@ -235,6 +235,15 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	terraform.Profile = config.Profile
 
+	// The AWS CLI is checked here, next to the terraform check and before the first
+	// call that needs it. A dry run is exempt because it reaches AWS at all: it
+	// resolves and prints the plan, nothing else.
+	if !opts.dryRun {
+		if err := infra.RequireAWSCLI(); err != nil {
+			return err
+		}
+	}
+
 	// Resolved once, here, before anything runs in parallel. Four terraform
 	// processes starting together each refreshing the same SSO token is a race we
 	// created by parallelising, and it surfaces as a credential error that looks

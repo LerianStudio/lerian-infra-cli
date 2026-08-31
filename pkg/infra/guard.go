@@ -109,8 +109,18 @@ func parseHCLAssignment(line string) (key, value string, ok bool) {
 		} else {
 			value = strings.TrimPrefix(value, `"`)
 		}
-	} else if hash := strings.Index(value, "#"); hash >= 0 {
-		value = strings.TrimSpace(value[:hash])
+	} else {
+		// An unquoted value ends at either comment marker. Line 92 already rejects a
+		// line that STARTS with // , so stripping only # here left the comment
+		// inside the value of a hand-written `bucket = name // note` — and the
+		// account-suffix check then reported a mismatch that does not exist, in the
+		// one guard that has to be trustworthy.
+		if marker := strings.Index(value, "//"); marker >= 0 {
+			value = strings.TrimSpace(value[:marker])
+		}
+		if hash := strings.Index(value, "#"); hash >= 0 {
+			value = strings.TrimSpace(value[:hash])
+		}
 	}
 	if key == "" || value == "" {
 		return "", "", false

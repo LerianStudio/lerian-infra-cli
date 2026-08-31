@@ -51,6 +51,14 @@ FLAGS
                           (aws configure). One profile per account, so normally one
                           per environment.
 
+  --clone / --no-clone    init only. Whether a missing checkout may be downloaded
+                          into the managed path. --clone needs --templates-ref;
+                          --no-clone fails instead. In a terminal, neither is a
+                          question; outside one, a missing checkout with neither
+                          flag is an error, because a CI run must never fetch a
+                          repository by accident. --auto-approve does not imply
+                          --clone.
+
   --templates-ref <tag>   init only. The lerian-terraform-foundation tag to clone
                           or sync to. No default: which templates release to run is
                           yours to choose, and this binary pins nothing. It does

@@ -179,8 +179,13 @@ func (r *Runner) Execute(
 			}
 
 			progress.Finish(true)
-			return results, fmt.Errorf("infra: plan failed in stage %q (%d of %d); nothing was applied "+
-				"and later stages were not started: %w", stage.Name, index+1, len(stages), err)
+			// What came before matters, and for apply and destroy it is not nothing:
+			// the stages above this one were confirmed and carried out. Telling an
+			// operator that "nothing was applied" after half a destroy sends them
+			// looking for infrastructure that is already gone.
+			return results, fmt.Errorf("infra: plan failed in stage %q (%d of %d); %s "+
+				"and later stages were not started: %w",
+				stage.Name, index+1, len(stages), describeCompletedStages(results[:len(results)-1], action), err)
 		}
 
 		if action == ActionPlan {
@@ -471,6 +476,29 @@ func pendingCreator(earlier []StageResult) string {
 		}
 	}
 	return ""
+}
+
+// describeCompletedStages says what the stages before the failure actually did, so
+// the failure message is true for a plan (nothing happened) and for an apply or a
+// destroy that got part of the way (something did, and it is named).
+func describeCompletedStages(earlier []StageResult, action Action) string {
+	if action == ActionPlan || len(earlier) == 0 {
+		return "nothing was applied"
+	}
+	var done []string
+	for _, result := range earlier {
+		if len(result.Applies) > 0 && firstError(result.Applies) == nil {
+			done = append(done, result.Stage.Name)
+		}
+	}
+	if len(done) == 0 {
+		return "nothing was applied"
+	}
+	verb := "applied"
+	if action == ActionDestroy {
+		verb = "destroyed"
+	}
+	return fmt.Sprintf("%s was already %s", strings.Join(done, ", "), verb)
 }
 
 // Blocked reports whether any stage could not be planned because a stage above it

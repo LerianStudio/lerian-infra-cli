@@ -171,3 +171,25 @@ func TestLoadEnvConfigReportsAMissingFileAsItsOwnCase(t *testing.T) {
 		t.Errorf("error = %q, want it to point at %s", err, layout.ConfigExample())
 	}
 }
+
+// First occurrence wins, which config.go documents and nothing asserted. A file with
+// a key twice is a real input — an operator edits environments.conf by hand — and a
+// change that took the last value instead would have passed the whole suite.
+func TestParseINIKeepsTheFirstValueOfARepeatedKey(t *testing.T) {
+	sections, err := parseINI(strings.NewReader(
+		"[dev]\naccount_id = 111111111111\nprofile = first\nprofile = second\n" +
+			"[prd]\naccount_id = 222222222222\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := sections["dev"]["profile"]; got != "first" {
+		t.Errorf("profile = %q, want the first occurrence", got)
+	}
+	if got := sections["dev"]["account_id"]; got != "111111111111" {
+		t.Errorf("account_id = %q", got)
+	}
+	if got := sections["prd"]["account_id"]; got != "222222222222" {
+		t.Errorf("the later section must be read too, got %q", got)
+	}
+}

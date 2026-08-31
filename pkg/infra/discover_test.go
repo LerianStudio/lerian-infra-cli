@@ -531,3 +531,62 @@ func TestAllWithOnlyEmptyPartsIsAccepted(t *testing.T) {
 		}
 	}
 }
+
+// Only absence means "not configured". A permission error on envs/ also fails Stat,
+// and treating that as opt-out dropped an engine that HAS a tfvars file from the run,
+// silently — a skip is reported as a choice the operator made.
+func TestSkipUnconfiguredSharedOnlySkipsMissingFiles(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	layout := fakeRepo(t, map[string][]string{"shared-resources": {"postgres", "valkey"}})
+	catalog, err := Discover(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stages, err := Resolve(layout, catalog, "shared-resources")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// postgres is configured but its envs/ cannot be read; valkey has no tfvars.
+	var postgres Unit
+	for _, stage := range stages {
+		for _, unit := range stage.Units {
+			if EngineOf(unit) == "postgres" {
+				postgres = unit
+			}
+		}
+	}
+	if postgres.Dir == "" {
+		t.Fatal("the fixture should carry a shared postgres root")
+	}
+	envs := filepath.Dir(VarFile(postgres, "dev"))
+	if err := os.MkdirAll(envs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(VarFile(postgres, "dev"), []byte("mode = \"shared\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(envs, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(envs, 0o755) })
+
+	kept, skipped := SkipUnconfiguredShared(stages, "dev")
+
+	for _, name := range skipped {
+		if EngineOf(Unit{Name: name}) == "postgres" {
+			t.Errorf("a stat failure is not an opt-out; postgres was dropped: %v", skipped)
+		}
+	}
+	var keptNames []string
+	for _, stage := range kept {
+		for _, unit := range stage.Units {
+			keptNames = append(keptNames, unit.Name)
+		}
+	}
+	if len(keptNames) == 0 {
+		t.Errorf("postgres must reach readiness validation, which reports the real cause")
+	}
+}

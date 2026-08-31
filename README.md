@@ -145,6 +145,24 @@ stages, err := infra.Resolve(layout, catalog, "midaz")    // dependency-ordered
 if err != nil {
     return err
 }
+// The account guard, in the order it has to run. Skipping any of it is how a
+// "dev" run reaches a production account: the bucket, the region and the live
+// credentials must agree before a single Terraform process starts.
+config, err := infra.LoadEnvConfig(layout, "dev")
+if err != nil {
+    return err
+}
+backend, err := infra.LoadBackend(layout, "dev")
+if err != nil {
+    return err
+}
+if err := infra.CheckBackend(backend, config); err != nil {
+    return err
+}
+if _, err := infra.VerifyAccount(ctx, infra.CLIIdentity{}, config); err != nil {
+    return err
+}
+
 runner, err := infra.NewRunner(infra.RunnerOptions{
     Layout: layout, Env: "dev", Backend: backend, Terraform: tf,
     Jobs: 4, Progress: myProgress, RunDir: dir,           // dir must be 0700
@@ -159,9 +177,14 @@ if err != nil {
 doc, err := runner.HelmValues(ctx, infra.Units(stages))
 ```
 
-The account guard runs before `NewRunner` (`LoadEnvConfig`, `LoadBackend`,
-`CheckBackend`, `VerifyAccount`) and has no bypass. A consumer of this library is
-expected to surface its errors, not route around them.
+That guard sequence is not optional and has no bypass. `NewRunner` cannot run it for
+you — it takes a `Backend` you already loaded — so a consumer that omits it gets a
+runner that will happily drive the wrong account. Surface its errors; do not route
+around them.
+
+`HelmValues` takes the units of ONE product: values are keyed by that chart's
+components and `secret_refs` by engine, so a call spanning two products is refused
+rather than merged into a document that fits neither.
 
 ## Development
 

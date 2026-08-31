@@ -1,7 +1,9 @@
 package infra
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -364,7 +366,12 @@ func SkipUnconfiguredShared(stages []Stage, env string) ([]Stage, []string) {
 		}
 		units := make([]Unit, 0, len(stage.Units))
 		for _, unit := range stage.Units {
-			if _, err := os.Stat(VarFile(unit, env)); err != nil {
+			// ONLY absence means "not configured". A permission error on envs/ also
+			// fails Stat, and treating that as opt-out dropped an engine that has a
+			// tfvars file from the run — silently, since a skip is reported as a
+			// choice the operator made. Keeping the unit sends it to readiness
+			// validation, which reports the real cause.
+			if _, err := os.Stat(VarFile(unit, env)); errors.Is(err, fs.ErrNotExist) {
 				skipped = append(skipped, unit.Name)
 				continue
 			}

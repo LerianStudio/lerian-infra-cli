@@ -158,7 +158,20 @@ func MapChartValues(product, engine string, facts Facts) (map[string]any, bool) 
 	if !ok {
 		return nil, false
 	}
-	return mapper(facts), true
+	values := mapper(facts)
+	// A component nothing was written to is dropped, so "no facts" really does mean
+	// an empty document. Every mapper opens by asking for its component, and put
+	// then skips absent facts, so a root that reports no endpoint and no port used
+	// to yield {"ledger": {}} — non-empty as far as the consumer is concerned.
+	// CollectHelmValuesFrom reads len(values) to decide between StatusOK and the
+	// "declares no helm_values" warning, so that empty shell was reported as
+	// "1 key(s)" and the warning an operator needs never fired.
+	for name, component := range values {
+		if inner, ok := component.(map[string]any); ok && len(inner) == 0 {
+			delete(values, name)
+		}
+	}
+	return values, true
 }
 
 // component returns the map for one chart component, creating it on first use.

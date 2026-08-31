@@ -68,14 +68,26 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Cloned OUTSIDE the workspace, with git rather than actions/checkout.
+      #
+      # actions/checkout can only write under $GITHUB_WORKSPACE, and anything it
+      # leaves there is an untracked directory in the repository goreleaser is about
+      # to release — which goreleaser refuses to do, by design: "git is in a dirty
+      # state". That is how v1.0.0-beta.1 shipped with no binaries. It passed before
+      # only because the floor tag did not exist yet and this step was skipped, so
+      # the fault appeared the day the other repository published, which is the worst
+      # possible day to find it.
+      #
+      # The templates repository is public, so a plain clone needs no token, and
+      # --depth 1 is enough: this reads HCL at one tag.
       - name: Check out the templates at the floor
         if: steps.ref.outputs.published == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: LerianStudio/lerian-terraform-foundation
-          ref: ${{ steps.ref.outputs.ref }}
-          path: templates
-          persist-credentials: false
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          git clone --depth 1 --branch "$REF" \
+            https://github.com/LerianStudio/lerian-terraform-foundation.git \
+            "$RUNNER_TEMP/templates"
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -90,8 +102,19 @@ jobs:
       # suite still has to pass.
       - name: Test
         env:
-          LERIAN_TEMPLATES_CHECKOUT: ${{ steps.ref.outputs.published == 'true' && format('{0}/templates', github.workspace) || '' }}
+          LERIAN_TEMPLATES_CHECKOUT: ${{ steps.ref.outputs.published == 'true' && format('{0}/templates', runner.temp) || '' }}
         run: go test ./... -cover
+
+      # The release must be built from exactly what is committed. goreleaser checks
+      # this itself and refuses a dirty tree; failing here says which file is at
+      # fault before the tool that cannot name it as clearly.
+      - name: Verify the working tree is clean
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "The working tree is not clean; goreleaser will refuse to release:" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
 
       - name: Release
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3

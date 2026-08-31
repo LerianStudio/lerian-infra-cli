@@ -42,8 +42,12 @@ decision is an error naming the flag, so a CI run never guesses.
 Flags:
   --env <name>          dev, stg or prd. Required.
   --profile <name>      AWS profile, from ~/.aws/config or ~/.aws/credentials.
-                        Empty means ambient credentials (CI, IRSA). See THE AWS
-                        CLI below.
+                        Passing it empty (--profile '') selects the ambient
+                        credentials in the environment: CI, IRSA. LEAVING IT OUT
+                        is different — in a terminal the profiles found in ~/.aws
+                        are listed with the account each reaches and you pick one;
+                        outside a terminal it is an error naming this flag. See
+                        THE AWS CLI below.
   --region <name>       AWS region for this environment.
   --account <id>        Expected 12-digit account. Verified against the profile.
   --targets <list>      Comma-separated roots to materialise tfvars for,
@@ -64,9 +68,11 @@ Flags:
                         you are saying where the templates already are.
 
 THE AWS CLI
-  It must be installed AND configured. This command resolves credentials and asks
-  STS who they are through it, so a machine without it is refused by name rather
-  than through a credential error.
+  Needed to resolve a profile or ask who its credentials belong to, which is every
+  path through this command except the offline one at the end of this section. It
+  has to be configured, not merely present: it is what reads the profile and turns
+  it into credentials, so a machine without it is refused by name rather than
+  through a credential error.
 
   Configure one profile per account you deploy into. dev, stg and prd are separate
   AWS accounts, so that is normally three:
@@ -619,7 +625,7 @@ func resolveCredentials(
 	// name. The one exception is the same escape the identity failure already has:
 	// with --account stated, init writes the configuration without reaching AWS, and
 	// the guard checks the account at apply time instead.
-	if err := infra.RequireAWSCLI(); err != nil {
+	if err := infra.RequireAWSCLI(ctx); err != nil {
 		if opts.account == "" {
 			return "", "", caller, err
 		}

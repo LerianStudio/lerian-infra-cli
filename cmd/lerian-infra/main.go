@@ -236,10 +236,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	terraform.Profile = config.Profile
 
 	// The AWS CLI is checked here, next to the terraform check and before the first
-	// call that needs it. A dry run is exempt because it reaches AWS at all: it
-	// resolves and prints the plan, nothing else.
+	// call that needs it. A dry run is exempt because it makes no AWS call at all:
+	// it resolves and prints the execution plan, nothing else.
 	if !opts.dryRun {
-		if err := infra.RequireAWSCLI(); err != nil {
+		if err := infra.RequireAWSCLI(ctx); err != nil {
 			return err
 		}
 	}

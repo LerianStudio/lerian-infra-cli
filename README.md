@@ -66,7 +66,9 @@ A binary built this way reports its version as `dev`.
 ## Prerequisites
 
 `terraform` >= 1.10.0, the **AWS CLI v2**, and `git` on your `PATH`. The CLI shells
-out to all three and checks for each one before the first call that needs it, by name.
+out to all three and checks for each one before the first call that needs it, by name
+— including the AWS CLI's major version, since v1 cannot export a profile's
+credentials and would otherwise fail later, looking like a broken profile.
 `kubectl` is for the step after the cluster exists; this CLI never calls it.
 
 The AWS CLI has to be **configured**, not just installed — it is what resolves
@@ -85,8 +87,10 @@ with `--account` to state which account they reach.
 
 `init` lists the profiles it finds in `~/.aws` with the account each one currently
 resolves to, so a mistyped profile or an expired session is visible before anything
-is written. On a machine that cannot reach AWS at all, `--account <id>` writes the
-configuration anyway and the account is verified later, at apply time.
+is written. On a machine that cannot reach AWS at all — no AWS CLI, or no credentials —
+`--account <id> --region <region>` writes the configuration anyway, and the account
+is verified later, at apply time. The region has to be stated there: `~/.aws/config`
+is read by the very tool that is missing.
 
 ## The templates
 

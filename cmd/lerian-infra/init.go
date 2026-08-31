@@ -145,14 +145,23 @@ type initOptions struct {
 	templatesRef string
 	environment  string
 	profile      string
-	region       string
-	account      string
-	targets      string
-	apiCIDR      string
-	mode         string
-	force        bool
-	dryRun       bool
-	autoApprove  bool
+	// profileSet records that --profile was passed, whatever its value.
+	//
+	// The flag package cannot tell an omitted --profile from --profile '', and the
+	// two mean opposite things here: the empty string is a decision — use the
+	// credentials already in the environment — while an absent flag is a question
+	// nobody has answered. Collapsing them made a CI run with no --profile provision
+	// with whatever identity happened to be ambient, which is the guess this tool
+	// exists not to make.
+	profileSet  bool
+	region      string
+	account     string
+	targets     string
+	apiCIDR     string
+	mode        string
+	force       bool
+	dryRun      bool
+	autoApprove bool
 	// clone and noClone are the explicit decision about acquiring the templates.
 	// Both set is an error rather than a silent precedence: an operator who typed
 	// both does not know what they want, and picking one for them hides that.
@@ -214,6 +223,13 @@ func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	// Visit reports only the flags actually given, which is the one way to tell
+	// --profile '' from no --profile at all.
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "profile" {
+			opts.profileSet = true
+		}
+	})
 	if rest := flags.Args(); len(rest) > 0 {
 		return fmt.Errorf("unexpected argument %q\nRun lerian-infra init --help", rest[0])
 	}
@@ -639,8 +655,22 @@ func resolveCredentials(
 		return profile, region, infra.Caller{}, nil
 	}
 
-	// With a profile already named, one lookup answers everything.
-	if profile != "" || !ask.interactive {
+	// Nothing named, and nobody to ask: the flag has to be stated. Ambient
+	// credentials remain available — as --profile '' — because that is a decision
+	// somebody made, and this branch exists precisely because no decision was made.
+	if !opts.profileSet && !ask.interactive {
+		return "", "", caller, errors.New("no --profile given\n" +
+			"Name the profile for this environment, or state that the credentials\n" +
+			"already in the environment are the ones to use:\n" +
+			"  --profile lerian-dev\n" +
+			"  --profile ''            ambient credentials (CI, IRSA)\n" +
+			"Outside a terminal there is nobody to ask, and picking an identity to\n" +
+			"create infrastructure with is not a guess this tool makes.")
+	}
+
+	// A profile named, or ambient credentials chosen explicitly: one lookup answers
+	// everything either way.
+	if opts.profileSet {
 		if ask.interactive {
 			// Always asked, even when the profile declares one. Which region the
 			// infrastructure is born in is a decision; inheriting it silently from

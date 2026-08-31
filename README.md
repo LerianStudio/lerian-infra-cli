@@ -82,8 +82,11 @@ aws configure --profile lerian-dev       # access key and secret
 ```
 
 Either mechanism works — the CLI reads whatever your profile uses and never assumes
-SSO. Credentials already in the environment work too: pass `--profile ''` together
-with `--account` to state which account they reach.
+SSO. Credentials already in the environment (CI, IRSA) work too: pass `--profile ''`
+— the empty string is how you say "use what is already here", and it is not the same
+as leaving the flag out. Omitting it in a terminal lists the profiles to pick from;
+omitting it in CI is an error naming the flag, because choosing the identity that
+creates infrastructure is not a guess this tool makes.
 
 `init` lists the profiles it finds in `~/.aws` with the account each one currently
 resolves to, so a mistyped profile or an expired session is visible before anything

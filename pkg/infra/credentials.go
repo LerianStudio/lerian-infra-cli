@@ -22,8 +22,10 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -49,6 +51,88 @@ func (c Credentials) Environment() map[string]string {
 		env["AWS_SESSION_TOKEN"] = c.SessionToken
 	}
 	return env
+}
+
+// ErrNoAWSCLI is returned when the AWS CLI is absent.
+//
+// It is checked early, by name, for the same reason ErrNoGit and
+// MinTerraformVersion are: without it the first AWS call fails as
+// `exec: "aws": executable file not found in $PATH`, buried inside a credentials
+// error, and the operator reads that as a broken profile rather than a missing tool.
+var ErrNoAWSCLI = errors.New("infra: the AWS CLI (aws) was not found in PATH")
+
+// ErrOldAWSCLI is returned when the AWS CLI found is too old to be usable.
+var ErrOldAWSCLI = errors.New("infra: the AWS CLI found is version 1")
+
+// RequireAWSCLI verifies a usable AWS CLI is installed before anything tries to use
+// it.
+//
+// The CLI is not optional and not replaceable by a Go SDK here: it is the only
+// implementation that can complete an SSO refresh, and it is what resolves whichever
+// credential mechanism the operator's profile happens to use.
+//
+// V2 SPECIFICALLY, and that is why this costs one `aws --version`. The command
+// ResolveCredentials depends on — `configure export-credentials` — landed in v2 and
+// was never backported, so a v1 installation passes a presence check and then fails
+// at the first profile with "argument operation: Invalid choice". That reads as a
+// broken profile, which is the diagnosis this whole function exists to prevent.
+//
+// A version string that cannot be parsed is ACCEPTED. What cannot be measured is not
+// judged: a vendored wrapper, a shim, or a future format change should not be
+// refused by a parser guessing at it, and the real command's own error is a better
+// last word than a false one here.
+//
+// The message names both ways a profile is configured. SSO is common at Lerian and
+// not universal — a profile with an access key and secret in ~/.aws/credentials is
+// just as valid, and telling somebody who uses one to run `aws configure sso` sends
+// them to fix something that is not broken.
+func RequireAWSCLI(ctx context.Context) error {
+	path, err := exec.LookPath("aws")
+	if err != nil {
+		return fmt.Errorf("%w\n"+
+			"Install the AWS CLI v2, then configure a profile for each account you\n"+
+			"deploy into — one per environment, since dev, stg and prd are separate\n"+
+			"accounts:\n"+
+			"  aws configure sso --profile lerian-dev      # IAM Identity Center\n"+
+			"  aws configure --profile lerian-dev          # access key and secret\n"+
+			"Either works. Ambient credentials in the environment work too: pass\n"+
+			"--profile '' with --account to say which account they reach.\n"+
+			"  https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html",
+			ErrNoAWSCLI)
+	}
+	if major, ok := awsCLIMajor(ctx, path); ok && major < 2 {
+		return fmt.Errorf("%w, and this tool needs v2\n"+
+			"  %s\n"+
+			"v2 is where 'aws configure export-credentials' exists, which is how a\n"+
+			"profile becomes credentials here — v1 fails at the first profile with an\n"+
+			"invalid-choice error that looks like a broken profile.\n"+
+			"  https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html",
+			ErrOldAWSCLI, path)
+	}
+	return nil
+}
+
+// awsCLIMajor reads the major version from `aws --version`, whose first field is
+// "aws-cli/<version>". The second return is false when there is nothing to read:
+// the command failed, or its output is not in that shape.
+func awsCLIMajor(ctx context.Context, path string) (int, bool) {
+	command := exec.CommandContext(ctx, path, "--version")
+	// The AWS CLI has written this banner to stdout since v2 and to stderr in some
+	// v1 builds, and v1 is exactly the case being detected — so both are read.
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return 0, false
+	}
+	_, rest, found := strings.Cut(string(output), "aws-cli/")
+	if !found {
+		return 0, false
+	}
+	major, _, _ := strings.Cut(strings.TrimSpace(rest), ".")
+	number, convErr := strconv.Atoi(major)
+	if convErr != nil {
+		return 0, false
+	}
+	return number, true
 }
 
 // ResolveCredentials asks the AWS CLI to export the profile's current credentials,

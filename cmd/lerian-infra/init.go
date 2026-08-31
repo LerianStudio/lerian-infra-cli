@@ -41,7 +41,13 @@ decision is an error naming the flag, so a CI run never guesses.
 
 Flags:
   --env <name>          dev, stg or prd. Required.
-  --profile <name>      AWS profile. Empty means ambient credentials (CI, IRSA).
+  --profile <name>      AWS profile, from ~/.aws/config or ~/.aws/credentials.
+                        Passing it empty (--profile '') selects the ambient
+                        credentials in the environment: CI, IRSA. LEAVING IT OUT
+                        is different — in a terminal the profiles found in ~/.aws
+                        are listed with the account each reaches and you pick one;
+                        outside a terminal it is an error naming this flag. See
+                        THE AWS CLI below.
   --region <name>       AWS region for this environment.
   --account <id>        Expected 12-digit account. Verified against the profile.
   --targets <list>      Comma-separated roots to materialise tfvars for,
@@ -60,6 +66,28 @@ Flags:
                         a clone — see --clone.
   --repo <path>         The checkout to configure. Using it turns the clone off:
                         you are saying where the templates already are.
+
+THE AWS CLI
+  Needed to resolve a profile or ask who its credentials belong to, which is every
+  path through this command except the offline one at the end of this section. It
+  has to be configured, not merely present: it is what reads the profile and turns
+  it into credentials, so a machine without it is refused by name rather than
+  through a credential error.
+
+  Configure one profile per account you deploy into. dev, stg and prd are separate
+  AWS accounts, so that is normally three:
+
+    aws configure sso --profile lerian-dev    # IAM Identity Center
+    aws configure --profile lerian-dev        # access key and secret
+
+  Either works — nothing here assumes SSO; the AWS CLI reads whatever the profile
+  declares. In a terminal with no --profile, the profiles found in ~/.aws are listed
+  with the account each one currently resolves to, so an expired session or a typo
+  is visible before anything is written.
+
+  On a machine that cannot reach AWS at all, --account <id> writes the configuration
+  anyway; the account is then verified at apply time. --region is still required
+  there, because ~/.aws/config is read by the very tool that is missing.
 
 THE TEMPLATES
   Which release of lerian-terraform-foundation to run is YOURS to choose: pass the
@@ -117,14 +145,23 @@ type initOptions struct {
 	templatesRef string
 	environment  string
 	profile      string
-	region       string
-	account      string
-	targets      string
-	apiCIDR      string
-	mode         string
-	force        bool
-	dryRun       bool
-	autoApprove  bool
+	// profileSet records that --profile was passed, whatever its value.
+	//
+	// The flag package cannot tell an omitted --profile from --profile '', and the
+	// two mean opposite things here: the empty string is a decision — use the
+	// credentials already in the environment — while an absent flag is a question
+	// nobody has answered. Collapsing them made a CI run with no --profile provision
+	// with whatever identity happened to be ambient, which is the guess this tool
+	// exists not to make.
+	profileSet  bool
+	region      string
+	account     string
+	targets     string
+	apiCIDR     string
+	mode        string
+	force       bool
+	dryRun      bool
+	autoApprove bool
 	// clone and noClone are the explicit decision about acquiring the templates.
 	// Both set is an error rather than a silent precedence: an operator who typed
 	// both does not know what they want, and picking one for them hides that.
@@ -186,6 +223,13 @@ func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	// Visit reports only the flags actually given, which is the one way to tell
+	// --profile '' from no --profile at all.
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "profile" {
+			opts.profileSet = true
+		}
+	})
 	if rest := flags.Args(); len(rest) > 0 {
 		return fmt.Errorf("unexpected argument %q\nRun lerian-infra init --help", rest[0])
 	}
@@ -592,8 +636,41 @@ func resolveCredentials(
 	profile = opts.profile
 	region = strings.TrimSpace(opts.region)
 
-	// With a profile already named, one lookup answers everything.
-	if profile != "" || !ask.interactive {
+	// Every path below this point either asks the AWS CLI who the operator is or
+	// lists the profiles it would ask about, so its absence is settled first and by
+	// name. The one exception is the same escape the identity failure already has:
+	// with --account stated, init writes the configuration without reaching AWS, and
+	// the guard checks the account at apply time instead.
+	if err := infra.RequireAWSCLI(ctx); err != nil {
+		if opts.account == "" {
+			return "", "", caller, err
+		}
+		// The escape does not skip the region: it is written into every tfvars this
+		// command produces, and with no AWS CLI there is nothing to infer it from —
+		// not even ~/.aws/config, which the CLI is what reads.
+		if region == "" {
+			return "", "", caller, fmt.Errorf("no region given, and the AWS CLI is not " +
+				"installed to infer one\nPass --region (for example --region us-east-2).")
+		}
+		return profile, region, infra.Caller{}, nil
+	}
+
+	// Nothing named, and nobody to ask: the flag has to be stated. Ambient
+	// credentials remain available — as --profile '' — because that is a decision
+	// somebody made, and this branch exists precisely because no decision was made.
+	if !opts.profileSet && !ask.interactive {
+		return "", "", caller, errors.New("no --profile given\n" +
+			"Name the profile for this environment, or state that the credentials\n" +
+			"already in the environment are the ones to use:\n" +
+			"  --profile lerian-dev\n" +
+			"  --profile ''            ambient credentials (CI, IRSA)\n" +
+			"Outside a terminal there is nobody to ask, and picking an identity to\n" +
+			"create infrastructure with is not a guess this tool makes.")
+	}
+
+	// A profile named, or ambient credentials chosen explicitly: one lookup answers
+	// everything either way.
+	if opts.profileSet {
 		if ask.interactive {
 			// Always asked, even when the profile declares one. Which region the
 			// infrastructure is born in is a decision; inheriting it silently from

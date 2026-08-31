@@ -42,6 +42,15 @@ FLAGS
 
   --templates-dir <path>  Where the managed checkout lives, when not the default.
 
+  --profile <name>        init only, and NOT a flag of a run: a run reads the
+                          profile for --env out of examples/aws/environments.conf,
+                          which init wrote. What both need is the AWS CLI, installed
+                          AND configured — it is what turns a profile into
+                          credentials, whether that profile uses IAM Identity Center
+                          (aws configure sso) or an access key and secret
+                          (aws configure). One profile per account, so normally one
+                          per environment.
+
   --templates-ref <tag>   init only. The lerian-terraform-foundation tag to clone
                           or sync to. No default: which templates release to run is
                           yours to choose, and this binary pins nothing. It does

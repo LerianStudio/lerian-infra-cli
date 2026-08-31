@@ -675,3 +675,25 @@ func TestReadDatastoreModeIgnoresEveryCommentForm(t *testing.T) {
 		}
 	}
 }
+
+// A mapper asks for its component before it knows whether it has anything to write,
+// so a root that reports nothing produced {"ledger": {}} — non-empty as far as the
+// consumer is concerned. CollectHelmValuesFrom reads len(values) to choose between
+// StatusOK and the "declares no helm_values" warning, so that empty shell was
+// reported as "1 key(s)" and the warning an operator needs never fired.
+func TestMapChartValuesDropsComponentsNothingWasWrittenTo(t *testing.T) {
+	values, ok := MapChartValues("midaz", "postgres", Facts{})
+	if !ok {
+		t.Fatal("midaz/postgres is a mapped root")
+	}
+	if len(values) != 0 {
+		t.Errorf("no facts must mean an empty document, got %#v", values)
+	}
+
+	// And a component that DID get something is still there, with its keys.
+	values, _ = MapChartValues("midaz", "postgres", Facts{Endpoint: "db.internal", Port: "5432"})
+	ledger, isMap := values[midazLedger].(map[string]any)
+	if !isMap || len(ledger) == 0 {
+		t.Fatalf("the ledger component must survive with its keys: %#v", values)
+	}
+}

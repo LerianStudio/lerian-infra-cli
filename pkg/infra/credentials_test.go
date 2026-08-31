@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -91,17 +92,94 @@ func TestRequireAWSCLIAcceptsAnUnreadableVersion(t *testing.T) {
 // The name carries .exe on Windows: exec.LookPath there resolves only the extensions
 // in PATHEXT, so an extensionless fixture is invisible to the very call under test.
 func fakeAWSCLI(t *testing.T, banner string) string {
+	return fakeAWSCLIWith(t, awsScript{version: banner})
+}
+
+// awsScript is what the fake AWS CLI should do: what `--version` prints, and what
+// any other invocation writes to each stream before exiting with exit.
+type awsScript struct {
+	version string
+	stdout  string
+	stderr  string
+	exit    int
+}
+
+// fakeAWSCLIWith writes the fake and returns the directory to put on PATH. Only
+// POSIX shell is generated for the credential cases, so those tests skip on Windows;
+// the version cases need nothing but an echo and work on both.
+func fakeAWSCLIWith(t *testing.T, script awsScript) string {
 	t.Helper()
 	dir := t.TempDir()
 
-	name, script := "aws", "#!/bin/sh\nprintf '%s\\n' \""+banner+"\"\n"
 	if runtime.GOOS == "windows" {
-		name, script = "aws.bat", "@echo "+banner+"\r\n"
+		if script.stdout != "" || script.stderr != "" || script.exit != 0 {
+			t.Skip("the credential fixture is a POSIX shell script")
+		}
 		// LookPath needs the extension to be one PATHEXT lists.
 		t.Setenv("PATHEXT", ".BAT;.EXE;.CMD")
+		body := "@echo " + script.version + "\r\n"
+		if err := os.WriteFile(filepath.Join(dir, "aws.bat"), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return dir
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
+
+	body := "#!/bin/sh\n" +
+		"if [ \"$1\" = \"--version\" ]; then printf '%s\\n' \"" + script.version + "\"; exit 0; fi\n" +
+		"printf '%s' \"" + script.stdout + "\"\n" +
+		"printf '%s' \"" + script.stderr + "\" >&2\n" +
+		"exit " + strconv.Itoa(script.exit) + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "aws"), []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// stdout and stderr are read apart, and only stdout is parsed. Merging them let a
+// stderr line shaped like KEY=VALUE be read as a credential — a warning or a
+// deprecation notice would become the access key the run then uses.
+func TestResolveCredentialsIgnoresKeyValueLinesOnStderr(t *testing.T) {
+	t.Setenv("PATH", fakeAWSCLIWith(t, awsScript{
+		version: "aws-cli/2.31.22",
+		stdout:  "AWS_ACCESS_KEY_ID=AKIAREAL\nAWS_SECRET_ACCESS_KEY=realsecret\n",
+		stderr:  "AWS_ACCESS_KEY_ID=AKIAFROMSTDERR\n",
+	}))
+
+	credentials, err := ResolveCredentials(context.Background(), "lerian-dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credentials.AccessKeyID != "AKIAREAL" {
+		t.Errorf("AccessKeyID = %q, want the value from stdout", credentials.AccessKeyID)
+	}
+	if credentials.SecretAccessKey != "realsecret" {
+		t.Errorf("SecretAccessKey = %q", credentials.SecretAccessKey)
+	}
+}
+
+// A non-zero exit AFTER credentials were printed must not put the secret into the
+// error text — the caller prints that error, which is how a secret reaches a CI log.
+func TestResolveCredentialsNeverPutsTheSecretInTheError(t *testing.T) {
+	t.Setenv("PATH", fakeAWSCLIWith(t, awsScript{
+		version: "aws-cli/2.31.22",
+		stdout:  "AWS_ACCESS_KEY_ID=AKIAREAL\nAWS_SECRET_ACCESS_KEY=topsecretvalue\n",
+		stderr:  "the SSO session has expired\n",
+		exit:    255,
+	}))
+
+	_, err := ResolveCredentials(context.Background(), "lerian-dev")
+	if err == nil {
+		t.Fatal("a non-zero exit is a failure even when something was printed")
+	}
+	// The error is NOT interpolated. If this assertion fails, err holds the secret,
+	// and printing it would write the very value under test into the CI log — the
+	// leak this test exists to catch, performed by the test.
+	if strings.Contains(err.Error(), "topsecretvalue") {
+		t.Error("the secret reached the error text; the error is withheld here on " +
+			"purpose, because printing it would leak the value into the log")
+	}
+	// The stderr the AWS CLI wrote is what diagnoses it, so that has to be there.
+	if !strings.Contains(err.Error(), "SSO session has expired") {
+		t.Errorf("the error must carry what the AWS CLI said:\n%v", err)
+	}
 }

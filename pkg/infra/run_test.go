@@ -607,3 +607,54 @@ func TestABlockedStageReportsEachUnitExactlyOnce(t *testing.T) {
 		t.Errorf("a stage that never ran is skipped: %v", progress.updates)
 	}
 }
+
+// After a partial apply or destroy, "nothing was applied" is false, and the message
+// that says it sends the operator looking for infrastructure that is already gone.
+func TestPlanFailureAfterAnApplySaysWhatWasAlreadyDone(t *testing.T) {
+	terraform := newFakeTerraform()
+	// The first stage applies cleanly; the second cannot even plan.
+	terraform.failures["plan products/midaz/postgres"] = errors.New("invalid subnet id")
+
+	runner := newTestRunner(t, terraform, &recordingProgress{}, 1)
+	stages := []Stage{
+		{Name: "infra-base/vpc", Units: units("infra-base/vpc")},
+		{Name: "midaz", Units: units("products/midaz/postgres")},
+	}
+
+	_, err := runner.Execute(context.Background(), stages, ActionApply, nil)
+	if err == nil {
+		t.Fatal("the failing plan must fail the run")
+	}
+	if strings.Contains(err.Error(), "nothing was applied") {
+		t.Errorf("a stage was applied before this failure:\n%v", err)
+	}
+	if !strings.Contains(err.Error(), "infra-base/vpc was already applied") {
+		t.Errorf("the message must name what was applied:\n%v", err)
+	}
+
+	// A destroy that fails while planning its FIRST stage has destroyed nothing, and
+	// the sentence has to say that rather than describing an apply.
+	destroying := newFakeTerraform()
+	destroying.failures["plan products/midaz/postgres"] = errors.New("no state found")
+	destroyer := newTestRunner(t, destroying, &recordingProgress{}, 1)
+	_, destroyErr := destroyer.Execute(context.Background(), []Stage{
+		{Name: "midaz", Units: units("products/midaz/postgres")},
+	}, ActionDestroy, nil)
+	if destroyErr == nil {
+		t.Fatal("the failing plan must fail the destroy")
+	}
+	if !strings.Contains(destroyErr.Error(), "nothing was destroyed") {
+		t.Errorf("a destroy destroys, applies nothing:\n%v", destroyErr)
+	}
+
+	// A plan run applies nothing by definition, so there the claim is true.
+	failing := newFakeTerraform()
+	failing.failures["plan products/midaz/postgres"] = errors.New("invalid subnet id")
+	planRunner := newTestRunner(t, failing, &recordingProgress{}, 1)
+	_, planErr := planRunner.Execute(context.Background(), []Stage{
+		{Name: "midaz", Units: units("products/midaz/postgres")},
+	}, ActionPlan, nil)
+	if planErr == nil || !strings.Contains(planErr.Error(), "nothing was applied") {
+		t.Errorf("for a plan the claim is correct: %v", planErr)
+	}
+}

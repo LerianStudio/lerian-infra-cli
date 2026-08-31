@@ -6,7 +6,10 @@ name: Release
 
 on:
   push:
-    branches: [develop, main]
+    # release-candidate is here because .releaserc declares it as the rc prerelease
+    # line. A branch configured to publish and never triggered is worse than one that
+    # does not exist: the configuration says releases happen and none do.
+    branches: [main, release-candidate, develop]
     paths-ignore:
       - '**.md'
       - 'docs/**'

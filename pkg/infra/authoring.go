@@ -589,11 +589,12 @@ func SupportsMode(unit Unit, env string) (bool, error) {
 		}
 		return false, fmt.Errorf("infra: cannot read %s: %w", example, err)
 	}
+	var comments commentScanner
 	for _, line := range splitLines(content) {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
-		}
-		if modeAssignment.MatchString(line) {
+		// The same scanner the rewriters use. A # prefix test reads a // comment or
+		// anything inside a /* ... */ block as configuration, and this answer decides
+		// whether the root is offered a mode at all.
+		if modeAssignment.MatchString(comments.code(line)) {
 			return true, nil
 		}
 	}
@@ -712,11 +713,13 @@ func retargetRegion(content []byte, region string) ([]byte, string) {
 	lines := splitLines(content)
 
 	from := ""
+	var detect commentScanner
 	for _, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
-		}
-		if match := regionAssignment.FindStringSubmatch(line); match != nil {
+		// Commented regions are prose — the templates quote prices per region — and
+		// reading one as `from` is worse than missing it: if it happens to equal the
+		// requested region, the early return below leaves the LIVE region unchanged
+		// and reports no move.
+		if match := regionAssignment.FindStringSubmatch(detect.code(line)); match != nil {
 			from = match[1]
 			break
 		}

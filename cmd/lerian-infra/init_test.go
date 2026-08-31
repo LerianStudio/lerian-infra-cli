@@ -194,20 +194,36 @@ func TestInitDryRunWritesNothing(t *testing.T) {
 	}
 }
 
-// A declared account that the credentials do not reach must stop here, not at
-// apply time: writing it would produce a config whose own guard rejects every run.
-func TestInitRejectsAccountMismatch(t *testing.T) {
+// A malformed --account is rejected before anything is written: a config carrying
+// "12345" produces a guard that refuses every later run, and the operator finds out
+// at apply time instead of now.
+//
+// This is the FORMAT check, not the mismatch check. A real mismatch — a well-formed
+// account the credentials do not reach — needs a caller identity to compare against,
+// and runInit resolves that through the live AWS CLI. It is covered where it can be
+// driven deterministically, with a stub identity:
+// pkg/infra TestVerifyAccountRefusesTheWrongAccount.
+func TestInitRejectsAMalformedAccountID(t *testing.T) {
 	root := initCheckout(t)
 	var out, errOut bytes.Buffer
 
+	// --profile is named on purpose: without it this run now fails at "no --profile
+	// given", which is a different refusal, and the test would pass while proving
+	// nothing about the account.
 	err := runInit(context.Background(), []string{
-		"--repo", root, "--env", "dev",
+		"--repo", root, "--env", "dev", "--profile", "acme",
 		"--account", "12345",
 		"--region", "us-east-2", "--targets", "infra-base",
 		"--api-cidr", "203.0.113.7", "--auto-approve",
 	}, &out, &errOut)
 	if err == nil {
 		t.Fatal("a malformed account id must be rejected")
+	}
+	if !strings.Contains(err.Error(), "12345") {
+		t.Errorf("the refusal must quote the id it rejected:\n%v", err)
+	}
+	if strings.Contains(err.Error(), "no --profile given") {
+		t.Errorf("this test must reach the account check, not stop before it:\n%v", err)
 	}
 }
 

@@ -831,3 +831,57 @@ func TestRewritersSurviveALeadingBlockComment(t *testing.T) {
 		}
 	})
 }
+
+// Finding the region to move AWAY from must ignore comments too. The templates quote
+// prices per region in prose, and reading one of those as `from` is worse than
+// missing it: when it happens to equal the requested region, retargetRegion returns
+// early and the LIVE region is never rewritten.
+func TestRetargetRegionIgnoresRegionsNamedInComments(t *testing.T) {
+	in := []byte("# us-east-2 is cheaper for this class\n" +
+		"// pricing below assumes us-east-2\n" +
+		"/* the note in this block mentions us-east-2 as well */\n" +
+		"region = \"us-east-1\"\n")
+
+	out, from := retargetRegion(in, "us-east-2")
+	if from != "us-east-1" {
+		t.Fatalf("from = %q, want the live region us-east-1", from)
+	}
+	if !strings.Contains(string(out), `region = "us-east-2"`) {
+		t.Errorf("the live region was not rewritten:\n%s", out)
+	}
+	// The prose keeps saying what it said.
+	if strings.Count(string(out), "us-east-2") != 4 {
+		t.Errorf("the three notes must survive alongside the rewrite:\n%s", out)
+	}
+}
+
+// Whether a root offers a mode at all is decided by this scan, so a mode assignment
+// inside a comment must not make an unmoded root look moded.
+func TestSupportsModeIgnoresCommentedAssignments(t *testing.T) {
+	root := t.TempDir()
+	unit := Unit{Dir: root, Name: "products/midaz/postgres"}
+	envs := filepath.Join(root, "envs")
+	if err := os.MkdirAll(envs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, body string
+		want       bool
+	}{
+		{"live assignment", "mode = \"dedicated\"\n", true},
+		{"hash comment", "# mode = \"shared\" would resolve the tier\n", false},
+		{"slash comment", "// mode = \"shared\"\n", false},
+		{"block comment", "/*\nmode = \"shared\"\n*/\n", false},
+	} {
+		if err := os.WriteFile(filepath.Join(envs, "dev.tfvars-example"), []byte(test.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := SupportsMode(unit, "dev")
+		if err != nil {
+			t.Fatalf("%s: %v", test.name, err)
+		}
+		if got != test.want {
+			t.Errorf("%s: SupportsMode = %v, want %v", test.name, got, test.want)
+		}
+	}
+}

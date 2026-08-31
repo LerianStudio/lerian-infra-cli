@@ -94,6 +94,26 @@ func CollectHelmValuesFrom(
 ) (Document, error) {
 	report := progressOr(progress)
 
+	// ONE PRODUCT PER DOCUMENT, refused here rather than merged.
+	//
+	// A values document is a single chart's input: Values is keyed by that chart's
+	// components, and secret_refs is keyed by engine so a consumer can name
+	// secret_refs.postgres. Two products in one call break both — their component
+	// trees merge into one tree that belongs to neither, and two postgres roots
+	// write the same secret_refs key, the second silently replacing the first.
+	//
+	// shared-resources is not an exception: in shared mode a product's unit is
+	// redirected to the tier below, so the tier is reached through the product that
+	// delegates to it, not by naming both.
+	if products := productsOf(units); len(products) > 1 {
+		return Document{}, fmt.Errorf(
+			"infra: a Helm values document belongs to one product, and this target spans %d: %s\n"+
+				"Values are keyed by the chart's own components and secret_refs by engine, so "+
+				"merging two products would produce a document that fits neither.\n"+
+				"Run one product at a time.",
+			len(products), strings.Join(products, ", "))
+	}
+
 	names := make([]string, 0, len(units))
 	for _, unit := range units {
 		names = append(names, unit.Name)
@@ -328,6 +348,24 @@ func (d Document) envelope() map[string]any {
 		envelope[secretRefsOutput] = refs
 	}
 	return envelope
+}
+
+// productsOf lists the distinct products the units belong to, sorted. A unit
+// outside products/ contributes nothing: infra-base has no chart to hand off to,
+// and the caller already refuses those targets by name.
+func productsOf(units []Unit) []string {
+	seen := map[string]bool{}
+	var products []string
+	for _, unit := range units {
+		product := ProductOf(unit)
+		if product == "" || seen[product] {
+			continue
+		}
+		seen[product] = true
+		products = append(products, product)
+	}
+	sort.Strings(products)
+	return products
 }
 
 // secretRefsByEngine renders SecretRefs for the JSON and YAML envelopes.

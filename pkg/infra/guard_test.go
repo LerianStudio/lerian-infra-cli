@@ -247,3 +247,33 @@ region = "us-east-2"
 		t.Errorf("Bucket = %q, want the first uncommented value", backend.Bucket)
 	}
 }
+
+// An unquoted value ends at either comment marker. Stripping only # left the comment
+// inside the value of a hand-written `bucket = name // note`, and the account-suffix
+// check then reported a mismatch that does not exist — in the one guard that has to
+// be trustworthy. LoadBackend tells operators to write this file by hand.
+func TestParseHCLAssignmentStripsBothCommentMarkersFromUnquotedValues(t *testing.T) {
+	for _, test := range []struct{ name, line, wantKey, wantValue string }{
+		{"unquoted with //", `bucket = lerian-tfstate-dev-123456789012 // the dev bucket`,
+			"bucket", "lerian-tfstate-dev-123456789012"},
+		{"unquoted with #", `bucket = lerian-tfstate-dev-123456789012 # the dev bucket`,
+			"bucket", "lerian-tfstate-dev-123456789012"},
+		{"quoted with //", `bucket = "lerian-tfstate-dev-123456789012" // note`,
+			"bucket", "lerian-tfstate-dev-123456789012"},
+		{"unquoted, no comment", `region = us-east-2`, "region", "us-east-2"},
+	} {
+		key, value, ok := parseHCLAssignment(test.line)
+		if !ok {
+			t.Errorf("%s: the line was not read at all", test.name)
+			continue
+		}
+		if key != test.wantKey || value != test.wantValue {
+			t.Errorf("%s: got %q = %q, want %q = %q",
+				test.name, key, value, test.wantKey, test.wantValue)
+		}
+	}
+	// A line that IS a comment stays rejected.
+	if _, _, ok := parseHCLAssignment(`// bucket = something`); ok {
+		t.Error("a commented line is not an assignment")
+	}
+}

@@ -52,21 +52,41 @@ jobs:
           # that cannot run the compatibility test still ships: refusing would put
           # the CLI's release line back under the templates' schedule, which is the
           # coupling this design removed. It is loud in the summary instead.
-          if git ls-remote --exit-code --tags \
-              https://github.com/LerianStudio/lerian-terraform-foundation.git \
-              "refs/tags/$ref" >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-            {
-              echo "### Templates floor $ref is not published yet"
-              echo
-              echo "The compatibility test did not run: it needs a clone of \`$ref\`"
-              echo "from LerianStudio/lerian-terraform-foundation, and that tag does"
-              echo "not exist. The binaries below were built and unit-tested, but"
-              echo "nothing proved they match real HCL."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          #
+          # THREE outcomes, not two. `ls-remote --exit-code` answers 0 for found and
+          # 2 for "no matching refs"; anything else is a lookup failure — no network,
+          # DNS, GitHub down, a renamed repository. Reading that as "not published
+          # yet" would let a flaky network silently skip the compatibility gate and
+          # publish binaries anyway, which is the one thing this step exists to stop.
+          set +e
+          git ls-remote --exit-code --tags \
+            https://github.com/LerianStudio/lerian-terraform-foundation.git \
+            "refs/tags/$ref" >/dev/null 2>&1
+          status=$?
+          set -e
+
+          case "$status" in
+            0)
+              echo "published=true" >> "$GITHUB_OUTPUT"
+              ;;
+            2)
+              echo "published=false" >> "$GITHUB_OUTPUT"
+              {
+                echo "### Templates floor $ref is not published yet"
+                echo
+                echo "The compatibility test did not run: it needs a clone of \`$ref\`"
+                echo "from LerianStudio/lerian-terraform-foundation, and that tag does"
+                echo "not exist. The binaries below were built and unit-tested, but"
+                echo "nothing proved they match real HCL."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "cannot tell whether templates $ref exists: git ls-remote exited $status" >&2
+              echo "Not treating this as an absent tag — that would skip the" >&2
+              echo "compatibility gate and publish binaries on a network failure." >&2
+              exit 1
+              ;;
+          esac
 
       # Cloned OUTSIDE the workspace, with git rather than actions/checkout.
       #

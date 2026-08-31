@@ -49,6 +49,11 @@ func TestContradictoryTemplateFlagsAreRefused(t *testing.T) {
 // for", and CI passes it as a matter of routine. If it also authorised a clone,
 // every CI run would be able to download a repository nobody asked it to fetch.
 func TestAutoApproveDoesNotAuthoriseACloneOutsideATerminal(t *testing.T) {
+	// acquireTemplates looks git up before it reaches the clone decision, so without
+	// git this asserts the wrong refusal and fails instead of skipping.
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
 	dest := filepath.Join(t.TempDir(), "managed")
 	out := &bytes.Buffer{}
 	// A prompter that is not interactive is exactly the CI case.
@@ -72,6 +77,9 @@ func TestAutoApproveDoesNotAuthoriseACloneOutsideATerminal(t *testing.T) {
 // --no-clone is the way to say "fail instead", and it must fail without touching
 // the network or the filesystem.
 func TestNoCloneFailsWithoutCreatingAnything(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
 	dest := filepath.Join(t.TempDir(), "managed")
 	out := &bytes.Buffer{}
 	ask := &prompter{out: out, interactive: true}
@@ -164,6 +172,9 @@ func TestCloneWithoutATagListsWhatIsAvailable(t *testing.T) {
 // rather than a warning: below it the HCL is a shape the chart mapping was never
 // written for, and the operator is about to create infrastructure from it.
 func TestCloneRefusesATagBelowTheFloor(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
 	dest := filepath.Join(t.TempDir(), "managed")
 	out := &bytes.Buffer{}
 	ask := &prompter{out: out, interactive: true}

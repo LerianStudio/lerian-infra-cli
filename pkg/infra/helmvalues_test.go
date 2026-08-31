@@ -373,3 +373,36 @@ func TestSharedModeDoesNotAdoptTheTiersSecretValues(t *testing.T) {
 		t.Errorf("the tier's secret values must not reach the product document: %v", document.SecretValues)
 	}
 }
+
+// A values document is one chart's input: Values is keyed by that chart's components
+// and secret_refs by engine. Two products in one call break both — their component
+// trees merge into a tree that belongs to neither, and two postgres roots write the
+// same secret_refs key, the second silently replacing the first. Refused, not merged.
+func TestCollectHelmValuesRefusesATargetSpanningTwoProducts(t *testing.T) {
+	terraform := newFakeTerraform()
+	terraform.outputs["products/midaz/postgres"] = outputs(map[string]string{
+		"helm_values": `{"DB_ONBOARDING_HOST":"pg.internal"}`,
+		"secret_name": "midaz-dev-postgres",
+	})
+	terraform.outputs["products/reporter/postgres"] = outputs(map[string]string{
+		"helm_values": `{"DB_HOST":"pg2.internal"}`,
+		"secret_name": "reporter-dev-postgres",
+	})
+
+	_, err := CollectHelmValues(context.Background(), terraform,
+		units("products/midaz/postgres", "products/reporter/postgres"), Backend{}, "dev", nil)
+	if err == nil {
+		t.Fatal("two products in one document must be refused")
+	}
+	for _, want := range []string{"one product", "midaz", "reporter"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must mention %q:\n%v", want, err)
+		}
+	}
+
+	// One product, several engines, stays fine — that is the normal call.
+	if _, err := CollectHelmValues(context.Background(), terraform,
+		units("products/midaz/postgres"), Backend{}, "dev", nil); err != nil {
+		t.Errorf("a single product must still work: %v", err)
+	}
+}

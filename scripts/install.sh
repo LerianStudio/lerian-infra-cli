@@ -171,7 +171,10 @@ Set INSTALL_DIR to somewhere you can write, or copy $tmp/$BINARY yourself:
 
     if on_path "$dir"; then
         say ""
-        say "Next: lerian-infra init --env dev --clone"
+        # Deliberately NOT `--clone`: that needs --templates-ref, and printing a
+        # command that fails is worse than printing the shortest one that works.
+        # Inside a checkout of the templates this is the whole first step.
+        say "Next: lerian-infra init --env dev"
     else
         say ""
         say "$dir is not on your PATH. Add it:"

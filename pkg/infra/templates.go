@@ -298,7 +298,11 @@ func LatestRef(refs []string) string {
 }
 
 // CompareRefs orders two version tags: negative when a is older, positive when it
-// is newer, zero when they are the same version or neither is a version.
+// is newer, zero when they are the same version.
+//
+// Two refs that are NOT versions are ordered by name instead, reversed so the
+// ordering stays a total order for SortRefs — "main" and "develop" are not equal and
+// must not compare as such. A version always outranks a non-version.
 //
 // Prereleases sort BELOW the release they lead to (v1.6.0-develop.1 < v1.6.0),
 // which is what semver says and what matters here: a floor of v1.5.0 must not be

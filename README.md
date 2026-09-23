@@ -71,6 +71,16 @@ out to all three and checks for each one before the first call that needs it, by
 credentials and would otherwise fail later, looking like a broken profile.
 `kubectl` is for the step after the cluster exists; this CLI never calls it.
 
+To see all of it at once rather than one gap per run:
+
+```bash
+lerian-infra check
+```
+
+It reports every dependency and the templates checkout it would resolve to,
+makes no AWS call, and exits non-zero when something is missing — which is what
+makes it usable as a CI gate.
+
 The AWS CLI has to be **configured**, not just installed — it is what resolves
 credentials and answers `sts get-caller-identity`, which every run is checked
 against. Configure one profile per account you deploy into: dev, stg and prd are

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -63,12 +64,15 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	if rest := flags.Args(); len(rest) > 0 {
+		return fmt.Errorf("unexpected argument %q\nRun lerian-infra check --help", rest[0])
+	}
 
 	results := []checkResult{
 		checkAWSCLI(ctx),
 		checkTerraform(ctx),
 		checkGit(),
-		checkTemplates(ctx, opts.repo, opts.templatesDir),
+		checkTemplates(ctx, opts.repo, os.Getenv("LERIAN_TF_REPO"), opts.templatesDir),
 	}
 
 	return reportChecks(stdout, results)
@@ -109,13 +113,14 @@ func checkGit() checkResult {
 }
 
 // checkTemplates reports which checkout a run would resolve to, and at which
-// version. Discovery has more than one source — a flag, an environment variable,
-// the working directory, the managed path — so naming the winner is worth a row
-// of its own.
-func checkTemplates(ctx context.Context, repo, templatesDir string) checkResult {
+// version. Discovery has more than one source — a flag, $LERIAN_TF_REPO, the
+// working directory and its parents, the managed path — so naming the winner is
+// worth a row of its own. It has to resolve from the same inputs a run does, or
+// the row reports a checkout that is not the one about to be used.
+func checkTemplates(ctx context.Context, repo, envRepo, templatesDir string) checkResult {
 	result := checkResult{name: "templates", ok: true}
 
-	layout, source, err := resolveLayout(repo, "", templatesDir)
+	layout, source, err := resolveLayout(repo, envRepo, templatesDir)
 	if err != nil {
 		result.ok = false
 		result.summary = "not found"

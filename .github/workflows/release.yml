@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   release:
-    uses: LerianStudio/github-actions-shared-workflows/.github/workflows/release.yml@v1.62.0
+    uses: LerianStudio/github-actions-shared-workflows/.github/workflows/release.yml@tier-1
     with:
       runner_type: "blacksmith-4vcpu-ubuntu-2404"
     secrets: inherit

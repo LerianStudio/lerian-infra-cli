@@ -73,10 +73,15 @@ type options struct {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	// One subcommand, dispatched before the flag set sees anything. Everything else
+	// Subcommands, dispatched before the flag set sees anything. Everything else
 	// stays flags-only, so the surface deploy.sh defined is untouched.
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") && args[0] == "init" {
-		return runInit(ctx, args[1:], stdout, stderr)
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		switch args[0] {
+		case "init":
+			return runInit(ctx, args[1:], stdout, stderr)
+		case "check":
+			return runCheck(ctx, args[1:], stdout, stderr)
+		}
 	}
 
 	var opts options

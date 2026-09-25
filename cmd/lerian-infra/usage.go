@@ -6,10 +6,16 @@ package main
 const usage = `lerian-infra — deploy the AWS v2 stacks of lerian-terraform-foundation
 
 USAGE
+  lerian-infra check                                   verify this machine
   lerian-infra init --env <dev|stg|prd> [flags]        write the configuration
   lerian-infra --env <dev|stg|prd> [--target <target>] [--action <action>] [options]
 
 FIRST RUN
+  Before anything else, 'lerian-infra check' reports the dependencies this tool
+  shells out to and the checkout it would use, in one pass and without touching
+  AWS. A run verifies the same things, but each one only when it is first needed,
+  so a bare machine is fixed over as many rounds as it has gaps.
+
   A fresh checkout has no configuration: environments.conf and every
   envs/<env>.tfvars are gitignored, because they carry an AWS account id. The init
   subcommand writes them, asking for what it cannot discover:

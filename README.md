@@ -1,5 +1,27 @@
 # lerian-infra-cli
 
+> [!IMPORTANT]
+> **Este repositório foi aposentado. O código vive agora em
+> [LerianStudio/lerian-cli](https://github.com/LerianStudio/lerian-cli).**
+>
+> Tudo que este binário fazia está disponível como um grupo de comandos do CLI unificado,
+> com a mesma linha de comando — basta trocar o executável pelo comando:
+>
+> | antes | agora |
+> |---|---|
+> | `lerian-infra check` | `lerian infra check` |
+> | `lerian-infra init --env dev` | `lerian infra init --env dev` |
+> | `lerian-infra --env dev --target all --dry-run` | `lerian infra --env dev --target all --dry-run` |
+>
+> As flags, a ordem de execução, o guard de conta e o texto de ajuda são os mesmos: a migração
+> foi verificada comparando a saída dos dois binários, incluindo códigos de saída.
+>
+> **Instalação:** `curl -fsSL https://raw.githubusercontent.com/LerianStudio/lerian-cli/main/scripts/install.sh | bash`
+>
+> As releases já publicadas aqui continuam baixáveis, mas não haverá versões novas. As issues
+> abertas foram migradas para o `lerian-cli` (#8 → lerian-cli#35, #9 → lerian-cli#36).
+
+
 **CLI and Go library** for provisioning the infrastructure the Lerian products run on.
 It drives the Terraform templates in
 [lerian-terraform-foundation](https://github.com/LerianStudio/lerian-terraform-foundation):
@@ -70,6 +92,16 @@ out to all three and checks for each one before the first call that needs it, by
 — including the AWS CLI's major version, since v1 cannot export a profile's
 credentials and would otherwise fail later, looking like a broken profile.
 `kubectl` is for the step after the cluster exists; this CLI never calls it.
+
+To see all of it at once rather than one gap per run:
+
+```bash
+lerian-infra check
+```
+
+It reports every dependency and the templates checkout it would resolve to,
+makes no AWS call, and exits non-zero when something is missing — which is what
+makes it usable as a CI gate.
 
 The AWS CLI has to be **configured**, not just installed — it is what resolves
 credentials and answers `sts get-caller-identity`, which every run is checked

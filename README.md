@@ -1,5 +1,27 @@
 # lerian-infra-cli
 
+> [!IMPORTANT]
+> **Este repositório foi aposentado. O código vive agora em
+> [LerianStudio/lerian-cli](https://github.com/LerianStudio/lerian-cli).**
+>
+> Tudo que este binário fazia está disponível como um grupo de comandos do CLI unificado,
+> com a mesma linha de comando — basta trocar o executável pelo comando:
+>
+> | antes | agora |
+> |---|---|
+> | `lerian-infra check` | `lerian infra check` |
+> | `lerian-infra init --env dev` | `lerian infra init --env dev` |
+> | `lerian-infra --env dev --target all --dry-run` | `lerian infra --env dev --target all --dry-run` |
+>
+> As flags, a ordem de execução, o guard de conta e o texto de ajuda são os mesmos: a migração
+> foi verificada comparando a saída dos dois binários, incluindo códigos de saída.
+>
+> **Instalação:** `curl -fsSL https://raw.githubusercontent.com/LerianStudio/lerian-cli/main/scripts/install.sh | bash`
+>
+> As releases já publicadas aqui continuam baixáveis, mas não haverá versões novas. As issues
+> abertas foram migradas para o `lerian-cli` (#8 → lerian-cli#35, #9 → lerian-cli#36).
+
+
 **CLI and Go library** for provisioning the infrastructure the Lerian products run on.
 It drives the Terraform templates in
 [lerian-terraform-foundation](https://github.com/LerianStudio/lerian-terraform-foundation):
